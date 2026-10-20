@@ -310,3 +310,9 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 .seg button { flex: 1 0 auto; white-space: nowrap; padding: 0 6px; min-height: 24px; height: auto; }
 
 .layers.file-over { outline: 2px dashed var(--accent); outline-offset: -2px; background: var(--accent-weak); }
+
+/* 파일 끌어다 놓기 안내 */
+#drop-hint { position: fixed; inset: 0; z-index: 250; display: none; pointer-events: none; border: 3px dashed var(--accent); background: rgba(227, 164, 70, .08); }
+body.file-drag #drop-hint { display: grid; place-items: start center; }
+#drop-hint > div { margin-top: 70px; display: grid; gap: 4px; text-align: center; padding: 12px 20px; background: var(--panel-2); border: 1px solid var(--accent); border-radius: 8px; font-weight: 600; box-shadow: 0 10px 30px rgba(0, 0, 0, .45); }
+#drop-hint small { font-weight: 400; color: var(--muted); }

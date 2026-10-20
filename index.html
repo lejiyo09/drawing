@@ -170,6 +170,7 @@
           <div id="layerprops" class="layerprops"></div>
           <div id="layers" class="layers" role="listbox" aria-label="레이어 목록"></div>
           <div class="layerbtns">
+            <button class="cmd accent" id="btn-add-image" title="이미지 파일을 골라 레이어로 추가합니다. 여러 장을 고르면 한 장당 레이어 하나씩 생깁니다. (Ctrl+Shift+O)">+ 이미지</button>
             <button class="cmd" data-cmd="newLayer" title="신규 래스터 레이어 (Ctrl+Shift+N)">+ 레이어</button>
             <button class="cmd" id="btn-newlayer-menu" title="벡터·폴더·보정·3D 등 다른 레이어">+ 종류 ▾</button>
             <button class="cmd" data-cmd="maskNew" title="레이어 마스크 작성">마스크</button>
@@ -192,6 +193,7 @@
 <div id="menupop" class="menupop" hidden></div>
 <div id="modal-back" class="modal-back" hidden><div class="modal" role="dialog" aria-modal="true"></div></div>
 <div id="toasts" aria-live="polite"></div>
+<div id="drop-hint" aria-hidden="true"><div>여기에 놓으면 이미지 한 장당 레이어 하나씩 들어갑니다<small>레이어 줄 위에 놓으면 그 레이어 위·아래에 들어갑니다</small></div></div>
 <input type="file" id="file-open" accept=".wpaint,.json,.psd,image/png,image/jpeg,image/webp,image/gif,image/bmp" hidden>
 <input type="file" id="file-import" accept="image/*,.psd" multiple hidden>
 <input type="file" id="file-audio" accept="audio/*" hidden>

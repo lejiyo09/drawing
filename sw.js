@@ -1,6 +1,6 @@
 /* WebPaint 서비스 워커: 앱 파일을 설치 시 저장해 오프라인에서도 실행한다.
- * 앱 파일을 고치면 VERSION을 올려야 사용자에게 새 버전이 전달된다. */
-const VERSION = 'webpaint-v2.0.1';
+ * 온라인일 때는 항상 서버의 최신 파일을 쓰고, 오프라인일 때만 저장본을 쓴다. */
+const VERSION = 'webpaint-v2.0.2';
 const FONT_CACHE = 'webpaint-fonts';
 const APP_FILES = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
@@ -29,9 +29,9 @@ self.addEventListener('fetch', e => {
     return;
   }
   if (url.origin !== self.location.origin) return;
-  // 앱 파일: 캐시 우선, 없으면 네트워크 후 저장. 페이지 이동은 오프라인일 때 index.html로.
-  e.respondWith(caches.match(req, { ignoreSearch: true }).then(hit => hit || fetch(req).then(r => {
+  // 앱 파일: 온라인이면 네트워크에서 최신 파일을 받아 저장하고, 오프라인이면 저장본을 쓴다.
+  e.respondWith(fetch(req, { cache: 'no-cache' }).then(r => {
     if (r.ok) { const copy = r.clone(); caches.open(VERSION).then(c => c.put(req, copy)); }
     return r;
-  }).catch(() => (req.mode === 'navigate' ? caches.match('index.html') : Response.error()))));
+  }).catch(async () => (await caches.match(req, { ignoreSearch: true })) || (req.mode === 'navigate' ? caches.match('index.html') : Response.error())));
 });

@@ -642,7 +642,7 @@ function renderLayers() {
     row.addEventListener('dragleave', () => row.classList.remove('drop-above', 'drop-below', 'drop-into'));
     row.addEventListener('drop', ev => {
       ev.preventDefault(); ev.stopPropagation(); const z = zone(ev); row.classList.remove('drop-above', 'drop-below', 'drop-into');
-      $('#layers').classList.remove('file-over');
+      $('#layers').classList.remove('file-over'); document.body.classList.remove('file-drag');
       if (!dragLayer && hasFiles(ev)) { importDropped(ev, L, z); return; }
       if (dragLayer && dragLayer !== L) dropLayer(dragLayer, L, z);
       dragLayer = null;
@@ -840,7 +840,7 @@ cmd('export', '이미지 내보내기 (PNG · PSD · JPEG · PDF)…', 'Ctrl+Shi
 cmd('quickPng', 'PNG로 바로 내보내기', 'Ctrl+Shift+E', async () => { download(await canvasBlob(exportComposite({}), 'image/png'), safeName() + '.png'); toast('PNG로 내보냈습니다. 숨긴 레이어와 밑그림 레이어는 빠집니다.'); });
 cmd('quickPsd', 'PSD로 바로 내보내기', null, () => { download(buildPSD({}), safeName() + '.psd'); toast('PSD로 내보냈습니다. 숨긴 레이어는 빠집니다.'); });
 cmd('animExport', '애니메이션 내보내기 (GIF · 동영상)…', null, () => Dialogs.animExport());
-cmd('import', '이미지를 레이어로 가져오기…', null, () => $('#file-import').click());
+cmd('import', '이미지를 레이어로 가져오기 (여러 장)…', 'Ctrl+Shift+O', () => pickImages());
 cmd('canvasSize', '캔버스 크기 변경…', null, () => Dialogs.canvasSize());
 cmd('resolution', '해상도 변경…', null, () => Dialogs.resolution());
 cmd('rotCW', '캔버스 90° 회전 (시계 방향)', null, () => rotateCanvasDoc('cw'));
@@ -1429,13 +1429,37 @@ const PWA = {
   async install() { if (!this.prompt) return; this.prompt.prompt(); await this.prompt.userChoice; this.prompt = null; $('#btn-install').hidden = true; updateCmdStates(); },
 };
 
-const hasFiles = e => !!(e.dataTransfer && [...e.dataTransfer.types].includes('Files'));
-function importDropped(e, target, where) {
-  const fs = [...e.dataTransfer.files];
-  const img = fs.filter(f => f.type.startsWith('image/') || /\.psd$/i.test(f.name));
-  if (!img.length) { if (fs.length) toast('레이어 패널에는 이미지(PNG·JPEG·WebP·GIF·BMP)와 PSD 파일을 넣을 수 있습니다.', true); return; }
-  importFilesAsLayers(img, target, where);
+// 탐색기에서 끌어온 파일, 또는 다른 웹페이지에서 끌어온 이미지 주소
+const hasFiles = e => { const t = e.dataTransfer ? [...e.dataTransfer.types] : []; return t.includes('Files') || t.includes('text/uri-list'); };
+const isImageFile = f => f && (f.type.startsWith('image/') || /\.(png|jpe?g|webp|gif|bmp|avif|psd)$/i.test(f.name || ''));
+function droppedFiles(dt) {
+  let fs = [...(dt.files || [])];
+  if (!fs.length && dt.items) fs = [...dt.items].filter(i => i.kind === 'file').map(i => i.getAsFile()).filter(Boolean);
+  return fs;
 }
+async function importDropped(e, target, where) {
+  const dt = e.dataTransfer, fs = droppedFiles(dt);
+  if (fs.length) {
+    const img = fs.filter(isImageFile);
+    if (!img.length) { toast('이미지(PNG·JPEG·WebP·GIF·BMP)와 PSD 파일만 레이어로 넣을 수 있습니다.', true); return; }
+    if (img.length < fs.length) toast(`이미지가 아닌 파일 ${fs.length - img.length}개는 건너뜁니다.`);
+    importFilesAsLayers(img, target, where);
+    return;
+  }
+  // 웹페이지에서 끌어온 이미지: 주소로 내려받는다 (사이트가 허용하지 않으면 실패)
+  const urls = (dt.getData('text/uri-list') || '').split(/\r?\n/).filter(u => u && !u.startsWith('#'));
+  if (!urls.length) return;
+  const files = [];
+  for (const u of urls) {
+    try {
+      const r = await fetch(u, { mode: 'cors' }); if (!r.ok) throw new Error(r.status);
+      const b = await r.blob(); if (!b.type.startsWith('image/')) throw new Error('이미지 아님');
+      files.push(new File([b], decodeURIComponent(u.split('/').pop().split('?')[0]) || '웹 이미지', { type: b.type }));
+    } catch { toast('웹페이지 이미지를 가져오지 못했습니다. 이미지를 컴퓨터에 저장한 뒤 그 파일을 끌어다 놓아 주세요.', true); }
+  }
+  if (files.length) importFilesAsLayers(files, target, where);
+}
+function pickImages() { $('#file-import').click(); }
 
 /* ================= 바인딩 ================= */
 function bindUI() {
@@ -1472,24 +1496,34 @@ function bindUI() {
     });
   });
   const stage = $('#stage');
-  stage.addEventListener('dragover', e => { if (e.dataTransfer && [...e.dataTransfer.types].includes('Files')) e.preventDefault(); });
-  stage.addEventListener('drop', e => {
-    const fs = e.dataTransfer ? [...e.dataTransfer.files] : [];
-    if (!fs.length) return;
-    e.preventDefault();
-    // 파일 하나를 캔버스에 놓으면 PSD·프로젝트는 열고, 이미지는 레이어로 넣는다
-    if (fs.length === 1 && /\.(psd|wpaint|json)$/i.test(fs[0].name)) { openFile(fs[0], false); return; }
-    if (fs.length === 1 && fs[0].type.startsWith('audio/')) { openFile(fs[0], false); return; }
-    importFilesAsLayers(fs);
+  /* 파일 끌어다 놓기: 창 어디에 놓아도 이미지마다 레이어 하나씩 들어간다.
+   * 레이어 줄 위에 놓으면 그 위·아래(줄의 핸들러가 처리), 그 밖에는 편집 중인 레이어 위에 쌓는다. */
+  const list = $('#layers');
+  let dragDepth = 0;
+  const endFileDrag = () => { dragDepth = 0; document.body.classList.remove('file-drag'); list.classList.remove('file-over'); };
+  window.addEventListener('dragenter', e => { if (dragLayer || !hasFiles(e)) return; e.preventDefault(); dragDepth++; document.body.classList.add('file-drag'); });
+  window.addEventListener('dragleave', e => { if (dragLayer || !hasFiles(e)) return; if (--dragDepth <= 0) endFileDrag(); });
+  window.addEventListener('dragover', e => {
+    if (dragLayer || !hasFiles(e)) return;
+    e.preventDefault(); e.dataTransfer.dropEffect = 'copy';
+    list.classList.toggle('file-over', !!e.target.closest && !!e.target.closest('.layer-panel'));
   });
-  // 레이어 패널 빈 곳이나 패널 전체에 놓으면 편집 중인 레이어 위에 넣는다
-  const lp = $('.layer-panel'), list = $('#layers');
-  lp.addEventListener('dragover', e => { if (!dragLayer && hasFiles(e)) { e.preventDefault(); list.classList.add('file-over'); } });
-  lp.addEventListener('dragleave', e => { if (!lp.contains(e.relatedTarget)) list.classList.remove('file-over'); });
-  lp.addEventListener('drop', e => { list.classList.remove('file-over'); if (!dragLayer && hasFiles(e)) { e.preventDefault(); importDropped(e); } });
-  // 다른 곳에 떨어뜨려도 브라우저가 이미지를 열어 버리지 않게
-  window.addEventListener('dragover', e => { if (hasFiles(e)) e.preventDefault(); });
-  window.addEventListener('drop', e => { if (hasFiles(e)) e.preventDefault(); });
+  window.addEventListener('drop', e => {
+    const was = document.body.classList.contains('file-drag');
+    endFileDrag();
+    if (dragLayer || !hasFiles(e)) return;
+    e.preventDefault();
+    if (Modal.isOpen() && !was) return;
+    const fs = droppedFiles(e.dataTransfer);
+    // 파일 하나만 놓았을 때 PSD·프로젝트·오디오는 캔버스 위면 열고, 레이어 패널이면 레이어로 넣는다
+    const onLayers = e.target.closest && e.target.closest('.layer-panel');
+    if (fs.length === 1 && !onLayers && /\.(psd|wpaint|json)$/i.test(fs[0].name)) { openFile(fs[0], false); return; }
+    if (fs.length === 1 && /\.(wpaint|json)$/i.test(fs[0].name)) { openFile(fs[0], false); return; }
+    if (fs.length === 1 && fs[0].type.startsWith('audio/')) { openFile(fs[0], false); return; }
+    importDropped(e);
+  });
+  window.addEventListener('dragend', endFileDrag);
+  $('#btn-add-image').addEventListener('click', pickImages);
   window.addEventListener('paste', e => {
     const tag = (e.target.tagName || '').toLowerCase();
     if (tag === 'input' || tag === 'textarea') return;
