@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>WebPaint Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<div id="app">
+  <header id="menubar">
+    <span class="brand">WebPaint</span>
+    <nav id="menus" aria-label="메인 메뉴"></nav>
+  </header>
+
+  <div id="cmdbar" role="toolbar" aria-label="커맨드 바">
+    <button class="cmd dock-toggle" id="btn-left" title="도구 속성 패널">도구 속성</button>
+    <button class="cmd" data-cmd="new" title="새로 만들기 (Ctrl+N)">새로 만들기</button>
+    <button class="cmd" data-cmd="open" title="열기 (Ctrl+O)">열기</button>
+    <button class="cmd" data-cmd="saveProject" title="프로젝트 저장 (Ctrl+S)">저장</button>
+    <button class="cmd accent" data-cmd="export" title="내보내기 (Ctrl+Shift+S)">내보내기</button>
+    <span class="sep"></span>
+    <button class="cmd icon" data-cmd="undo" title="실행 취소 (Ctrl+Z)" aria-label="실행 취소"><svg viewBox="0 0 24 24"><path d="M9 7H4V2M4 7c3-4 9-5 13-1s3 11-3 12"/></svg></button>
+    <button class="cmd icon" data-cmd="redo" title="다시 실행 (Ctrl+Y)" aria-label="다시 실행"><svg viewBox="0 0 24 24"><path d="M15 7h5V2M20 7c-3-4-9-5-13-1s-3 11 3 12"/></svg></button>
+    <span class="sep"></span>
+    <button class="cmd" data-cmd="deselect" title="선택 해제 (Ctrl+D)">선택 해제</button>
+    <button class="cmd" data-cmd="invertSel" title="선택 범위 반전 (Ctrl+Shift+I)">반전</button>
+    <button class="cmd" data-cmd="transform" title="확대/축소/회전 (Ctrl+T)">변형</button>
+    <span class="sep"></span>
+    <button class="cmd icon" data-cmd="zoomOut" title="축소 (Ctrl+-)" aria-label="축소"><svg viewBox="0 0 24 24"><circle cx="10" cy="10" r="6"/><path d="M7 10h6M15 15l5 5"/></svg></button>
+    <button class="cmd icon" data-cmd="zoomIn" title="확대 (Ctrl++)" aria-label="확대"><svg viewBox="0 0 24 24"><circle cx="10" cy="10" r="6"/><path d="M7 10h6M10 7v6M15 15l5 5"/></svg></button>
+    <button class="cmd" data-cmd="fit" title="피팅 (Ctrl+0)">맞춤</button>
+    <button class="cmd" data-cmd="flipView" title="좌우 반전 표시">좌우 반전</button>
+    <span class="grow"></span>
+    <button class="cmd dock-toggle" id="btn-right" title="레이어 패널">레이어</button>
+  </div>
+
+  <main id="workspace">
+    <nav id="toolbar" aria-label="도구"></nav>
+
+    <aside id="leftdock" class="dock">
+      <section class="panel">
+        <h2 class="ph">보조 도구 <span id="subtool-title" class="ph-sub"></span></h2>
+        <div id="sublist" class="pb sublist"></div>
+      </section>
+      <section class="panel grow-panel">
+        <h2 class="ph">도구 속성 <span id="prop-title" class="ph-sub"></span></h2>
+        <div id="props" class="pb props"></div>
+      </section>
+      <section class="panel">
+        <h2 class="ph">컬러 써클</h2>
+        <div class="pb color-panel">
+          <div class="chips">
+            <div class="chip-stack">
+              <button id="chip-sub" class="chip sub" title="서브 컬러" aria-label="서브 컬러"></button>
+              <button id="chip-main" class="chip main" title="메인 컬러" aria-label="메인 컬러"></button>
+            </div>
+            <button id="chip-trans" class="chip trans" title="투명색 (지우개처럼 그리기)" aria-label="투명색"></button>
+            <button id="chip-swap" class="mini" title="메인/서브 전환 (X)">⇄</button>
+            <label class="hex">HEX <input id="hex" maxlength="7" spellcheck="false" autocomplete="off"></label>
+          </div>
+          <canvas id="wheel" width="220" height="220" aria-label="컬러 써클"></canvas>
+          <div class="rgbline" id="rgbline"></div>
+          <div class="swatch-title">컬러 세트</div>
+          <div id="swatches" class="swatches"></div>
+          <div class="swatch-title">컬러 히스토리</div>
+          <div id="colorhist" class="swatches hist"></div>
+        </div>
+      </section>
+    </aside>
+
+    <div id="stage">
+      <canvas id="view"></canvas>
+      <div id="transformbar" hidden>
+        <label><input type="checkbox" id="tf-ratio" checked> 종횡비 유지</label>
+        <button class="cmd" id="tf-fliph">좌우 반전</button>
+        <button class="cmd" id="tf-flipv">상하 반전</button>
+        <button class="cmd" id="tf-cancel">취소</button>
+        <button class="cmd accent" id="tf-ok">확정</button>
+      </div>
+      <div id="status"></div>
+    </div>
+
+    <aside id="rightdock" class="dock">
+      <section class="panel">
+        <h2 class="ph">내비게이터</h2>
+        <div class="pb nav-panel">
+          <canvas id="nav" width="260" height="150"></canvas>
+          <div class="navrow"><span>배율</span><input type="range" id="nav-zoom" min="0" max="1000" step="1"><output id="nav-zoom-v"></output></div>
+          <div class="navrow"><span>회전</span><input type="range" id="nav-rot" min="-180" max="180" step="1"><output id="nav-rot-v"></output></div>
+        </div>
+      </section>
+      <section class="panel grow-panel">
+        <h2 class="ph">레이어</h2>
+        <div class="pb layer-panel">
+          <div id="layerprops" class="layerprops"></div>
+          <div id="layers" class="layers" role="listbox" aria-label="레이어 목록"></div>
+          <div class="layerbtns">
+            <button class="cmd" data-cmd="newLayer" title="신규 래스터 레이어 (Ctrl+Shift+N)">+ 레이어</button>
+            <button class="cmd" data-cmd="dupLayer" title="레이어 복제">복제</button>
+            <button class="cmd" data-cmd="mergeDown" title="아래 레이어와 결합 (Ctrl+E)">결합</button>
+            <button class="cmd icon" data-cmd="layerUp" title="위로" aria-label="레이어 위로"><svg viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></svg></button>
+            <button class="cmd icon" data-cmd="layerDown" title="아래로" aria-label="레이어 아래로"><svg viewBox="0 0 24 24"><path d="M12 5v14M6 13l6 6 6-6"/></svg></button>
+            <button class="cmd icon danger" data-cmd="delLayer" title="레이어 삭제" aria-label="레이어 삭제"><svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg></button>
+          </div>
+        </div>
+      </section>
+      <section class="panel">
+        <h2 class="ph">작업 내역</h2>
+        <div id="history" class="pb history"></div>
+      </section>
+    </aside>
+  </main>
+</div>
+
+<div id="menupop" class="menupop" hidden></div>
+<div id="modal-back" class="modal-back" hidden><div class="modal" role="dialog" aria-modal="true"></div></div>
+<div id="toasts" aria-live="polite"></div>
+<input type="file" id="file-open" accept=".wpaint,.json,.psd,image/png,image/jpeg,image/webp,image/gif,image/bmp" hidden>
+<input type="file" id="file-import" accept="image/*,.psd" hidden>
+
+<script src="js/psd.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
