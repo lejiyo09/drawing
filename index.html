@@ -4,9 +4,16 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <title>WebPaint Studio</title>
+<meta name="description" content="레이어·벡터·만화·애니메이션·3D를 지원하는 브라우저 드로잉 앱. 설치하면 오프라인에서도 동작합니다.">
+<meta name="theme-color" content="#1b1c1f">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="WebPaint">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=Noto+Sans+KR:wght@400;700&family=Noto+Serif+KR:wght@400;700&family=Gothic+A1:wght@400;700&family=Nanum+Myeongjo:wght@400;700&family=Nanum+Pen+Script&family=Black+Han+Sans&family=Do+Hyeon&family=Jua&display=swap">
 <link rel="stylesheet" href="css/app.css">
 </head>
 <body>
@@ -14,6 +21,8 @@
   <header id="menubar">
     <span class="brand">WebPaint</span>
     <nav id="menus" aria-label="메인 메뉴"></nav>
+    <span class="grow"></span>
+    <button class="cmd install" id="btn-install" hidden>앱 설치</button>
   </header>
 
   <div id="cmdbar" role="toolbar" aria-label="커맨드 바">
@@ -30,10 +39,17 @@
     <button class="cmd" data-cmd="invertSel" title="선택 범위 반전 (Ctrl+Shift+I)">반전</button>
     <button class="cmd" data-cmd="transform" title="확대/축소/회전 (Ctrl+T)">변형</button>
     <span class="sep"></span>
+    <button class="cmd" data-cmd="snapRuler" title="자에 스냅 (Ctrl+1)">자 스냅</button>
+    <button class="cmd" data-cmd="snapSpecial" title="특수 자에 스냅 (Ctrl+2)">특수 자 스냅</button>
+    <button class="cmd" data-cmd="symRuler" title="대칭 자">대칭</button>
+    <span class="sep"></span>
     <button class="cmd icon" data-cmd="zoomOut" title="축소 (Ctrl+-)" aria-label="축소"><svg viewBox="0 0 24 24"><circle cx="10" cy="10" r="6"/><path d="M7 10h6M15 15l5 5"/></svg></button>
     <button class="cmd icon" data-cmd="zoomIn" title="확대 (Ctrl++)" aria-label="확대"><svg viewBox="0 0 24 24"><circle cx="10" cy="10" r="6"/><path d="M7 10h6M10 7v6M15 15l5 5"/></svg></button>
     <button class="cmd" data-cmd="fit" title="피팅 (Ctrl+0)">맞춤</button>
     <button class="cmd" data-cmd="flipView" title="좌우 반전 표시">좌우 반전</button>
+    <span class="sep"></span>
+    <button class="cmd" data-cmd="materials" title="소재 (F7)">소재</button>
+    <button class="cmd" data-cmd="timeline" title="타임라인">타임라인</button>
     <span class="grow"></span>
     <button class="cmd dock-toggle" id="btn-right" title="레이어 패널">레이어</button>
   </div>
@@ -42,15 +58,15 @@
     <nav id="toolbar" aria-label="도구"></nav>
 
     <aside id="leftdock" class="dock">
-      <section class="panel">
+      <section class="panel" data-panel="sub">
         <h2 class="ph">보조 도구 <span id="subtool-title" class="ph-sub"></span></h2>
         <div id="sublist" class="pb sublist"></div>
       </section>
-      <section class="panel grow-panel">
+      <section class="panel grow-panel" data-panel="prop">
         <h2 class="ph">도구 속성 <span id="prop-title" class="ph-sub"></span></h2>
         <div id="props" class="pb props"></div>
       </section>
-      <section class="panel">
+      <section class="panel" data-panel="color">
         <h2 class="ph">컬러 써클</h2>
         <div class="pb color-panel">
           <div class="chips">
@@ -72,34 +88,91 @@
       </section>
     </aside>
 
-    <div id="stage">
-      <canvas id="view"></canvas>
-      <div id="transformbar" hidden>
-        <label><input type="checkbox" id="tf-ratio" checked> 종횡비 유지</label>
-        <button class="cmd" id="tf-fliph">좌우 반전</button>
-        <button class="cmd" id="tf-flipv">상하 반전</button>
-        <button class="cmd" id="tf-cancel">취소</button>
-        <button class="cmd accent" id="tf-ok">확정</button>
+    <div id="center">
+      <div id="stage">
+        <canvas id="view"></canvas>
+        <div id="transformbar" hidden>
+          <select id="tf-mode" aria-label="변형 방식">
+            <option value="affine">확대/축소/회전</option>
+            <option value="free">자유 변형</option>
+            <option value="mesh">메쉬 변형</option>
+            <option value="puppet">퍼펫 워프</option>
+          </select>
+          <label><input type="checkbox" id="tf-ratio" checked> 종횡비 유지</label>
+          <button class="cmd" id="tf-fliph">좌우 반전</button>
+          <button class="cmd" id="tf-flipv">상하 반전</button>
+          <button class="cmd" id="tf-cancel">취소</button>
+          <button class="cmd accent" id="tf-ok">확정</button>
+        </div>
+        <div id="status"></div>
       </div>
-      <div id="status"></div>
+      <section id="timeline" aria-label="타임라인" hidden>
+        <div class="tl-bar">
+          <button class="cmd icon" id="tl-first" title="처음 프레임" aria-label="처음 프레임">⏮</button>
+          <button class="cmd icon" id="tl-prev" title="이전 프레임 (,)" aria-label="이전 프레임">◀</button>
+          <button class="cmd icon accent" id="tl-play" title="재생/정지 (Enter)" aria-label="재생">▶</button>
+          <button class="cmd icon" id="tl-next" title="다음 프레임 (.)" aria-label="다음 프레임">▶</button>
+          <button class="cmd icon" id="tl-last" title="마지막 프레임" aria-label="마지막 프레임">⏭</button>
+          <label class="tl-field"><span>프레임</span><input id="tl-frame" class="num" aria-label="현재 프레임"></label>
+          <label class="tl-field"><span>fps</span><input id="tl-fps" class="num" aria-label="프레임 레이트"></label>
+          <label class="tl-field"><span>길이</span><input id="tl-len" class="num" aria-label="재생 길이"></label>
+          <span class="sep"></span>
+          <button class="cmd" id="tl-newcel" title="애니메이션 폴더에 새 셀을 만들고 현재 프레임에 지정">새 셀</button>
+          <button class="cmd" id="tl-assign" title="선택한 셀을 현재 프레임에 지정 (트랙 더블클릭)">셀 지정</button>
+          <button class="cmd" id="tl-clear" title="현재 프레임 지정 삭제 / 빈 셀">지정 해제</button>
+          <button class="cmd" id="tl-key" title="선택 레이어(또는 카메라)의 키프레임 추가/삭제">키프레임</button>
+          <button class="cmd" id="tl-onion" title="어니언 스킨">어니언 스킨</button>
+          <button class="cmd" id="tl-cam" title="2D 카메라">카메라</button>
+          <button class="cmd" id="tl-audio" title="오디오 불러오기">오디오</button>
+          <button class="cmd" id="tl-export" title="애니메이션 내보내기">내보내기</button>
+          <span class="grow"></span>
+          <div id="tl-fields" class="tl-fields"></div>
+          <button class="cmd icon" id="tl-close" title="타임라인 닫기" aria-label="타임라인 닫기">×</button>
+        </div>
+        <div class="tl-body">
+          <div id="tl-labels" class="tl-labels"></div>
+          <div id="tl-scroll" class="tl-scroll"><canvas id="tl-grid"></canvas></div>
+        </div>
+      </section>
     </div>
 
     <aside id="rightdock" class="dock">
-      <section class="panel">
+      <section class="panel" data-panel="nav">
         <h2 class="ph">내비게이터</h2>
         <div class="pb nav-panel">
           <canvas id="nav" width="260" height="150"></canvas>
-          <div class="navrow"><span>배율</span><input type="range" id="nav-zoom" min="0" max="1000" step="1"><output id="nav-zoom-v"></output></div>
-          <div class="navrow"><span>회전</span><input type="range" id="nav-rot" min="-180" max="180" step="1"><output id="nav-rot-v"></output></div>
+          <div class="navrow"><span>배율</span><input type="range" id="nav-zoom" min="0" max="1000" step="1" aria-label="배율"><output id="nav-zoom-v"></output></div>
+          <div class="navrow"><span>회전</span><input type="range" id="nav-rot" min="-180" max="180" step="1" aria-label="회전"><output id="nav-rot-v"></output></div>
         </div>
       </section>
-      <section class="panel grow-panel">
+      <section class="panel" data-panel="pages">
+        <h2 class="ph">페이지 관리 <span id="page-count" class="ph-sub"></span></h2>
+        <div class="pb page-panel">
+          <div id="pages" class="pages"></div>
+          <div class="layerbtns">
+            <button class="cmd icon" id="page-prev" title="이전 페이지" aria-label="이전 페이지">‹</button>
+            <button class="cmd icon" id="page-next" title="다음 페이지" aria-label="다음 페이지">›</button>
+            <button class="cmd" id="page-add" title="페이지 추가">+ 페이지</button>
+            <button class="cmd" id="page-dup" title="페이지 복제">복제</button>
+            <button class="cmd icon" id="page-left" title="페이지 앞으로" aria-label="페이지 앞으로">⇤</button>
+            <button class="cmd icon" id="page-right" title="페이지 뒤로" aria-label="페이지 뒤로">⇥</button>
+            <button class="cmd icon danger" id="page-del" title="페이지 삭제" aria-label="페이지 삭제"><svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg></button>
+          </div>
+        </div>
+      </section>
+      <section class="panel" data-panel="lprops">
+        <h2 class="ph">레이어 속성</h2>
+        <div id="lprops" class="pb props"></div>
+      </section>
+      <section class="panel grow-panel" data-panel="layers">
         <h2 class="ph">레이어</h2>
         <div class="pb layer-panel">
           <div id="layerprops" class="layerprops"></div>
           <div id="layers" class="layers" role="listbox" aria-label="레이어 목록"></div>
           <div class="layerbtns">
             <button class="cmd" data-cmd="newLayer" title="신규 래스터 레이어 (Ctrl+Shift+N)">+ 레이어</button>
+            <button class="cmd" id="btn-newlayer-menu" title="벡터·폴더·보정·3D 등 다른 레이어">+ 종류 ▾</button>
+            <button class="cmd" data-cmd="maskNew" title="레이어 마스크 작성">마스크</button>
             <button class="cmd" data-cmd="dupLayer" title="레이어 복제">복제</button>
             <button class="cmd" data-cmd="mergeDown" title="아래 레이어와 결합 (Ctrl+E)">결합</button>
             <button class="cmd icon" data-cmd="layerUp" title="위로" aria-label="레이어 위로"><svg viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></svg></button>
@@ -108,7 +181,7 @@
           </div>
         </div>
       </section>
-      <section class="panel">
+      <section class="panel" data-panel="history">
         <h2 class="ph">작업 내역</h2>
         <div id="history" class="pb history"></div>
       </section>
@@ -121,8 +194,24 @@
 <div id="toasts" aria-live="polite"></div>
 <input type="file" id="file-open" accept=".wpaint,.json,.psd,image/png,image/jpeg,image/webp,image/gif,image/bmp" hidden>
 <input type="file" id="file-import" accept="image/*,.psd" hidden>
+<input type="file" id="file-audio" accept="audio/*" hidden>
+<input type="file" id="file-material" accept="image/*" hidden>
 
 <script src="js/psd.js"></script>
-<script src="js/app.js"></script>
+<script src="js/core.js"></script>
+<script src="js/brush.js"></script>
+<script src="js/selection.js"></script>
+<script src="js/transform.js"></script>
+<script src="js/vector.js"></script>
+<script src="js/ruler.js"></script>
+<script src="js/text.js"></script>
+<script src="js/manga.js"></script>
+<script src="js/anim.js"></script>
+<script src="js/three3d.js"></script>
+<script src="js/material.js"></script>
+<script src="js/io.js"></script>
+<script src="js/layers.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/main.js"></script>
 </body>
 </html>

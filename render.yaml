@@ -1,0 +1,20 @@
+# Render(render.com) 정적 사이트 설정. 저장소를 Render에 연결하면 이 파일을 읽어 배포한다.
+services:
+  - type: web
+    name: webpaint-studio
+    runtime: static
+    staticPublishPath: .
+    pullRequestPreviewsEnabled: false
+    headers:
+      - path: /sw.js
+        name: Cache-Control
+        value: no-cache
+      - path: /index.html
+        name: Cache-Control
+        value: no-cache
+      - path: /manifest.webmanifest
+        name: Content-Type
+        value: application/manifest+json
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
