@@ -336,32 +336,100 @@ async function loadProject(p) {
   fitView();
   Pages.render();
 }
-async function loadPSD(buf, name) {
-  const doc = PSD.readPSD(new Uint8Array(buf));
-  newDocument({ w: doc.width, h: doc.height, dpi: doc.dpi, paper: null, name });
-  D.layers = [];
-  const put = (L, rgba, x, y, w, h) => { if (!w || !h) return; L.ctx.putImageData(new ImageData(new Uint8ClampedArray(rgba.buffer, rgba.byteOffset, w * h * 4), w, h), x, y); };
-  const toMask = m => { const c = mkCanvas(D.w, D.h), x = c.getContext('2d'), id = x.createImageData(D.w, D.h); for (let i = 0; i < m.length; i++) id.data[i * 4 + 3] = m[i]; x.putImageData(id, 0, 0); return c; };
-  const add = (nodes, parent) => {
+// PSD 노드를 현재 문서의 레이어 목록(아래→위)으로 만든다. fit: 배율과 위치
+function psdLayers(doc, parent, fit) {
+  const out = [];
+  const draw = (target, rgba, x, y, w, h) => {
+    if (!w || !h) return;
+    const c = mkCanvas(w, h);
+    c.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(rgba.buffer, rgba.byteOffset, w * h * 4), w, h), 0, 0);
+    const t = target.getContext('2d'); t.imageSmoothingQuality = 'high';
+    t.drawImage(c, fit.x + x * fit.s, fit.y + y * fit.s, w * fit.s, h * fit.s);
+  };
+  const toMask = m => {
+    const rgba = new Uint8ClampedArray(doc.width * doc.height * 4);
+    for (let i = 0; i < m.length; i++) rgba[i * 4 + 3] = m[i];
+    const c = mkCanvas(D.w, D.h); draw(c, rgba, 0, 0, doc.width, doc.height); return c;
+  };
+  const add = (nodes, pid) => {
     for (const n of nodes) {
       let L;
-      if (n.kind === 'folder') { L = newLayer({ type: 'folder', name: n.name, parent, opacity: n.opacity, blend: n.blend, visible: !n.hidden, data: { open: n.open, anim: false, frame: null } }); D.layers.push(L); add(n.children, L.id); }
-      else if (n.kind === 'adjust') { L = newLayer({ type: 'adjust', name: n.name, parent, opacity: n.opacity, visible: !n.hidden, clip: n.clip, data: { kind: n.adjust.kind, params: n.adjust.params } }); D.layers.push(L); }
-      else { L = newLayer({ name: n.name, parent, opacity: n.opacity, blend: n.blend, visible: !n.hidden, clip: n.clip, alphaLock: n.alphaLock }); put(L, n.rgba, n.x, n.y, n.w, n.h); D.layers.push(L); }
+      if (n.kind === 'folder') { L = newLayer({ type: 'folder', name: n.name, parent: pid, opacity: n.opacity, blend: n.blend, visible: !n.hidden, data: { open: n.open, anim: false, frame: null } }); out.push(L); add(n.children, L.id); }
+      else if (n.kind === 'adjust') { L = newLayer({ type: 'adjust', name: n.name, parent: pid, opacity: n.opacity, visible: !n.hidden, clip: n.clip, data: { kind: n.adjust.kind, params: n.adjust.params } }); out.push(L); }
+      else { L = newLayer({ name: n.name, parent: pid, opacity: n.opacity, blend: n.blend, visible: !n.hidden, clip: n.clip, alphaLock: n.alphaLock }); draw(L.canvas, n.rgba, n.x, n.y, n.w, n.h); out.push(L); }
       if (n.mask) L.mask = toMask(n.mask);
     }
   };
-  if (doc.nodes.length) add(doc.nodes, 0);
-  else { const L = newLayer({ name: '배경' }); put(L, doc.composite, 0, 0, doc.width, doc.height); D.layers.push(L); }
+  if (doc.nodes.length) add(doc.nodes, parent);
+  else { const L = newLayer({ name: '배경', parent }); draw(L.canvas, doc.composite, 0, 0, doc.width, doc.height); out.push(L); }
+  return out;
+}
+// 캔버스 안에 전부 들어가도록 줄여서 가운데에 놓는 배율·위치
+function fitInCanvas(w, h) { const s = Math.min(1, D.w / w, D.h / h); return { s, x: Math.round((D.w - w * s) / 2), y: Math.round((D.h - h * s) / 2) }; }
+async function loadPSD(buf, name) {
+  const doc = PSD.readPSD(new Uint8Array(buf));
+  newDocument({ w: doc.width, h: doc.height, dpi: doc.dpi, paper: null, name });
+  D.layers = psdLayers(doc, 0, { s: 1, x: 0, y: 0 });
   D.activeId = D.layers[D.layers.length - 1].id;
   H.clear(); markDirty(); renderLayers(); Pages.store();
   for (const L of D.layers) queueThumb(L);
+}
+/* 이미지·PSD 여러 개를 한 번에 레이어로 가져온다.
+ * target·where가 있으면 그 레이어 위(above)·아래(below)·폴더 안(into)에, 없으면 편집 중인 레이어 위에 놓는다.
+ * 캔버스보다 큰 이미지는 전부 보이도록 줄인다. PSD는 파일 이름의 폴더로 묶는다. */
+async function importFilesAsLayers(files, target, where) {
+  const list = [...files].filter(f => f && (f.type.startsWith('image/') || /\.psd$/i.test(f.name)));
+  if (!list.length) return false;
+  const built = [];
+  for (const f of list) {
+    const name = (f.name || '붙여넣은 이미지').replace(/\.[^.]+$/, '');
+    try {
+      if (/\.psd$/i.test(f.name)) built.push({ name, psd: PSD.readPSD(new Uint8Array(await f.arrayBuffer())) });
+      else built.push({ name, bmp: await createImageBitmap(f) });
+    } catch (e) { console.error(e); toast(`${f.name || '이미지'}: ${e.message || '읽을 수 없는 파일입니다.'}`, true); }
+  }
+  if (!built.length) return true;
+  if (A.float) cancelFloat();
+  if (Text.editing) Text.commitEditor();
+  let shrunk = 0;
+  structural(built.length > 1 ? `이미지 ${built.length}개 가져오기` : '이미지 가져오기', [], () => {
+    let tgt = target || active(), wh = where || (tgt && tgt.type === 'folder' && tgt.data.open ? 'into' : 'above');
+    for (const b of built) {
+      let block;
+      if (b.psd) {
+        const F = newLayer({ type: 'folder', name: b.name, data: { open: true, anim: false, frame: null } });
+        const fit = fitInCanvas(b.psd.width, b.psd.height);
+        if (fit.s < 1) shrunk++;
+        block = [F, ...psdLayers(b.psd, F.id, fit)];
+      } else {
+        const L = newLayer({ name: b.name }), fit = fitInCanvas(b.bmp.width, b.bmp.height);
+        if (fit.s < 1) shrunk++;
+        L.ctx.imageSmoothingQuality = 'high';
+        L.ctx.drawImage(b.bmp, fit.x, fit.y, b.bmp.width * fit.s, b.bmp.height * fit.s);
+        block = [L];
+      }
+      const top = block[0];
+      if (!tgt) { top.parent = 0; D.layers.push(...block); }
+      else {
+        top.parent = wh === 'into' ? tgt.id : tgt.parent;
+        const end = tgt.type === 'folder' ? (descendants(tgt).pop() || tgt) : tgt;
+        const at = wh === 'below' ? layerIndex(tgt) : layerIndex(end) + 1;
+        D.layers.splice(at, 0, ...block);
+      }
+      for (const L of block) queueThumb(L);
+      // 다음 이미지는 방금 넣은 레이어 위에 쌓는다
+      tgt = top; wh = 'above';
+      D.activeId = top.id;
+    }
+  });
+  toast(`${built.length}개를 레이어로 가져왔습니다.` + (shrunk ? ` 캔버스보다 큰 ${shrunk}개는 전부 보이도록 줄였습니다.` : ''));
+  return true;
 }
 async function openFile(file, asLayer) {
   try {
     const n = file.name.toLowerCase();
     if (n.endsWith('.psd')) {
-      if (asLayer) { toast('PSD는 파일 > 열기로 열어 주세요.', true); return; }
+      if (asLayer) { await importFilesAsLayers([file]); return; }
       await loadPSD(await file.arrayBuffer(), file.name.replace(/\.psd$/i, ''));
       toast('PSD를 열었습니다.');
     } else if (n.endsWith('.wpaint') || n.endsWith('.json')) {
@@ -369,7 +437,7 @@ async function openFile(file, asLayer) {
       toast('프로젝트를 열었습니다.');
     } else if (file.type.startsWith('image/')) {
       const bmp = await createImageBitmap(file);
-      if (asLayer) { const c = mkCanvas(bmp.width, bmp.height); c.getContext('2d').drawImage(bmp, 0, 0); pasteCanvas(c, null, null, file.name.replace(/\.[^.]+$/, '')); }
+      if (asLayer) { bmp.close && bmp.close(); await importFilesAsLayers([file]); }
       else {
         newDocument({ w: bmp.width, h: bmp.height, dpi: 72, paper: '#ffffff', name: file.name.replace(/\.[^.]+$/, '') });
         const L = active(); L.name = '배경'; L.ctx.drawImage(bmp, 0, 0);
