@@ -1,11 +1,11 @@
 /* WebPaint 서비스 워커: 앱 파일을 설치 시 저장해 오프라인에서도 실행한다.
  * 온라인일 때는 항상 서버의 최신 파일을 쓰고, 오프라인일 때만 저장본을 쓴다. */
-const VERSION = 'webpaint-v2.0.2';
+const VERSION = 'webpaint-v2.0.3';
 const FONT_CACHE = 'webpaint-fonts';
 const APP_FILES = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
   'js/psd.js', 'js/core.js', 'js/brush.js', 'js/selection.js', 'js/transform.js', 'js/vector.js', 'js/ruler.js',
-  'js/text.js', 'js/manga.js', 'js/anim.js', 'js/three3d.js', 'js/material.js', 'js/io.js', 'js/layers.js', 'js/ui.js', 'js/main.js',
+  'js/text.js', 'js/manga.js', 'js/anim.js', 'js/three3d.js', 'js/material.js', 'js/io.js', 'js/layers.js', 'js/ui.js', 'js/panels.js', 'js/main.js',
   'vendor/three.min.js', 'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png',
 ];
 

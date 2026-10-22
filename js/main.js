@@ -89,6 +89,7 @@ async function init() {
   buildBuiltinTips();
   buildMenus();
   bindUI();
+  Panels.init();
   resizeView();
   ColorUI.init();
   NavUI.init();

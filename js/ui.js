@@ -782,7 +782,9 @@ const HistUI = {
     const mk = (label, i) => { const b = el('button', { class: 'hitem' + (i === H.idx ? ' cur' : i > H.idx ? ' future' : ''), text: label }); b.addEventListener('click', () => H.jump(i)); return b; };
     box.append(mk('처음 상태', 0));
     H.stack.forEach((c, i) => box.append(mk(c.label, i + 1)));
-    const cur = box.querySelector('.cur'); if (cur) cur.scrollIntoView({ block: 'nearest' });
+    // 작업 내역 목록만 스크롤한다 (scrollIntoView는 팔레트 독까지 움직인다)
+    const cur = box.querySelector('.cur');
+    if (cur) { const top = cur.offsetTop - box.offsetTop; if (top < box.scrollTop) box.scrollTop = top; else if (top + cur.offsetHeight > box.scrollTop + box.clientHeight) box.scrollTop = top + cur.offsetHeight - box.clientHeight; }
   },
 };
 
@@ -929,7 +931,6 @@ cmd('pageDel', '페이지 삭제', null, () => Pages.remove(), { enabled: () => 
 cmd('pagePrev', '이전 페이지', 'Alt+PageUp', () => Pages.switchTo(P.index - 1));
 cmd('pageNext', '다음 페이지', 'Alt+PageDown', () => Pages.switchTo(P.index + 1));
 cmd('materials', '소재…', 'F7', () => Materials.open());
-cmd('panelsReset', '패널 배치 초기화', null, () => { store.set('collapsed', {}); document.querySelectorAll('.panel.collapsed').forEach(p => p.classList.remove('collapsed')); });
 cmd('shortcuts', '단축키 목록', 'F1', () => Dialogs.shortcuts());
 cmd('about', 'WebPaint 정보', null, () => Dialogs.about());
 cmd('install', '앱으로 설치 (오프라인 사용)', null, () => PWA.install(), { enabled: () => !!PWA.prompt });
@@ -1483,18 +1484,7 @@ function bindUI() {
   $('#page-del').addEventListener('click', () => Pages.remove());
   $('#page-left').addEventListener('click', () => Pages.move(-1));
   $('#page-right').addEventListener('click', () => Pages.move(1));
-  // 패널 접기
-  const collapsed = store.get('collapsed', {});
-  document.querySelectorAll('.panel[data-panel]').forEach(p => {
-    const id = p.dataset.panel;
-    if (collapsed[id]) p.classList.add('collapsed');
-    p.querySelector('.ph').addEventListener('click', ev => {
-      if (ev.target.closest('button,input,select')) return;
-      p.classList.toggle('collapsed');
-      const c = store.get('collapsed', {}); c[id] = p.classList.contains('collapsed'); store.set('collapsed', c);
-      navDirty = true; requestRender();
-    });
-  });
+  // 팔레트 이동·접기·띄우기는 panels.js
   const stage = $('#stage');
   /* 파일 끌어다 놓기: 창 어디에 놓아도 이미지마다 레이어 하나씩 들어간다.
    * 레이어 줄 위에 놓으면 그 위·아래(줄의 핸들러가 처리), 그 밖에는 편집 중인 레이어 위에 쌓는다. */

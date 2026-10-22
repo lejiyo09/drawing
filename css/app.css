@@ -61,7 +61,7 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 .dock-toggle { display: none; }
 
 /* 작업 공간 */
-#workspace { display: grid; grid-template-columns: 48px 240px minmax(0, 1fr) 284px; min-height: 0; position: relative; }
+#workspace { --lw: 240px; --rw: 284px; display: grid; grid-template-columns: 48px var(--lw) minmax(0, 1fr) var(--rw); min-height: 0; position: relative; }
 #toolbar { display: flex; flex-direction: column; gap: 2px; padding: 6px 4px; background: var(--panel); border-right: 1px solid var(--line); overflow-y: auto; scrollbar-width: none; }
 .tool { position: relative; width: 40px; height: 36px; flex: none; display: grid; place-items: center; background: none; border: 1px solid transparent; border-radius: 6px; cursor: pointer; color: var(--fg); }
 .tool:hover { background: var(--raised); }
@@ -316,3 +316,42 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 body.file-drag #drop-hint { display: grid; place-items: start center; }
 #drop-hint > div { margin-top: 70px; display: grid; gap: 4px; text-align: center; padding: 12px 20px; background: var(--panel-2); border: 1px solid var(--accent); border-radius: 8px; font-weight: 600; box-shadow: 0 10px 30px rgba(0, 0, 0, .45); }
 #drop-hint small { font-weight: 400; color: var(--muted); }
+
+/* 팔레트 배치 */
+#toolbar { grid-column: 1; grid-row: 1; }
+#leftdock { grid-column: 2; grid-row: 1; }
+#center { grid-column: 3; grid-row: 1; }
+#rightdock { grid-column: 4; grid-row: 1; }
+#workspace.left-empty { --lw: 0px !important; }
+#workspace.right-empty { --rw: 0px !important; }
+#workspace.left-empty #leftdock, #workspace.right-empty #rightdock { border: 0; overflow: hidden; }
+.dock-resizer { position: absolute; top: 0; bottom: 0; width: 7px; z-index: 15; cursor: col-resize; }
+.dock-resizer:hover, .dock-resizer:active { background: var(--accent-weak); }
+#leftdock-resizer { left: calc(48px + var(--lw) - 4px); }
+#rightdock-resizer { right: calc(var(--rw) - 4px); }
+#workspace.left-empty #leftdock-resizer, #workspace.right-empty #rightdock-resizer { display: none; }
+.ph { user-select: none; touch-action: none; }
+.ph-tools { margin-left: auto; display: flex; gap: 2px; align-self: center; }
+.ph-btn { width: 20px; height: 18px; display: grid; place-items: center; padding: 0; background: none; border: 0; border-radius: 3px; color: var(--muted); font-size: 12px; line-height: 1; cursor: pointer; }
+.ph-btn:hover { background: var(--raised); color: var(--fg); }
+.panel.dragging { opacity: .45; }
+body.panel-dragging, body.panel-dragging * { cursor: grabbing !important; }
+.panel-ghost { position: fixed; z-index: 400; pointer-events: none; padding: 6px 10px; background: var(--panel-2); border: 1px solid var(--accent); border-radius: 6px; font-size: 12px; font-weight: 600; box-shadow: 0 10px 30px rgba(0, 0, 0, .5); opacity: .92; }
+#dock-indicator { position: fixed; z-index: 399; height: 4px; background: var(--accent); border-radius: 2px; pointer-events: none; box-shadow: 0 0 0 2px rgba(227, 164, 70, .25); }
+#floating { position: fixed; inset: 0; pointer-events: none; z-index: 40; }
+#floating > .panel { pointer-events: auto; position: fixed; display: flex; flex-direction: column; min-width: 200px; max-width: calc(100vw - 8px); max-height: calc(100vh - 16px); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 14px 36px rgba(0, 0, 0, .5); overflow: hidden; resize: both; }
+#floating > .panel > .ph { border-radius: 8px 8px 0 0; cursor: grab; flex: none; }
+#floating > .panel > .pb { overflow: auto; flex: 1; min-height: 0; }
+#floating > .panel.collapsed { resize: none; height: auto !important; }
+#floating > .panel.collapsed > .ph { border-radius: 8px; border-bottom: 0; }
+#floating > .panel.grow-panel { flex: none; }
+@media (max-width: 1100px) {
+  #center { grid-column: 2; }
+  #leftdock { width: var(--lw); }
+  #rightdock { width: var(--rw); }
+  .dock-resizer { display: none; }
+}
+@media (max-width: 640px) {
+  #center { grid-column: 1; grid-row: 1; }
+  #toolbar { grid-column: 1; grid-row: 2; }
+}

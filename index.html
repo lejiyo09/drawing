@@ -57,6 +57,8 @@
   <main id="workspace">
     <nav id="toolbar" aria-label="도구"></nav>
 
+    <div id="leftdock-resizer" class="dock-resizer" title="끌어서 독 너비 조절 · 더블클릭하면 기본 너비"></div>
+    <div id="rightdock-resizer" class="dock-resizer" title="끌어서 독 너비 조절 · 더블클릭하면 기본 너비"></div>
     <aside id="leftdock" class="dock">
       <section class="panel" data-panel="sub">
         <h2 class="ph">보조 도구 <span id="subtool-title" class="ph-sub"></span></h2>
@@ -190,6 +192,8 @@
   </main>
 </div>
 
+<div id="floating"></div>
+<div id="dock-indicator" hidden></div>
 <div id="menupop" class="menupop" hidden></div>
 <div id="modal-back" class="modal-back" hidden><div class="modal" role="dialog" aria-modal="true"></div></div>
 <div id="toasts" aria-live="polite"></div>
@@ -214,6 +218,7 @@
 <script src="js/io.js"></script>
 <script src="js/layers.js"></script>
 <script src="js/ui.js"></script>
+<script src="js/panels.js"></script>
 <script src="js/main.js"></script>
 </body>
 </html>
