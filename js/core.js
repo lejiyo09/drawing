@@ -353,7 +353,7 @@ function paperPattern(ctx) {
 // 브러시 버퍼에 색 · 종이 질감 · 수채 경계 · 선택 범위를 적용한 캔버스
 function prepOverlay(o, r) {
   const sel = o.useSel && Sel.has;
-  if (!o.color && !o.texture && !sel && !o.wetEdge) return o.canvas;
+  if (!o.color && !o.texture && !sel && !o.wetEdge && !o.tail) return o.canvas;
   const tt = T.get('tmp'), t = tt.ctx;
   t.save(); t.beginPath(); t.rect(r.x, r.y, r.w, r.h); t.clip(); t.clearRect(r.x, r.y, r.w, r.h);
   if (o.wetEdge) {
@@ -369,6 +369,8 @@ function prepOverlay(o, r) {
     t.drawImage(e.canvas, r.x, r.y, r.w, r.h, r.x, r.y, r.w, r.h);
     t.globalCompositeOperation = 'source-over';
   } else t.drawImage(o.canvas, r.x, r.y, r.w, r.h, r.x, r.y, r.w, r.h);
+  // 손떨림 보정으로 아직 덜 그려진 끝부분 (손을 떼면 실제로 그려질 부분)
+  if (o.tail) t.drawImage(o.tail, r.x, r.y, r.w, r.h, r.x, r.y, r.w, r.h);
   if (o.color) { t.globalCompositeOperation = 'source-in'; t.fillStyle = o.color; t.fillRect(r.x, r.y, r.w, r.h); }
   if (o.texture) { t.globalCompositeOperation = 'destination-in'; t.fillStyle = paperPattern(t); t.fillRect(r.x, r.y, r.w, r.h); }
   if (sel) { t.globalCompositeOperation = 'destination-in'; t.drawImage(Sel.canvas, r.x, r.y, r.w, r.h, r.x, r.y, r.w, r.h); }
@@ -656,11 +658,20 @@ function drawView() {
   if (drag && drag.preview) { ctx.save(); drag.preview(ctx, px); ctx.restore(); }
   ctx.setTransform(V.dpr, 0, 0, V.dpr, 0, 0);
   for (const f of OVERLAYS.screen) { ctx.save(); try { f(ctx); } catch (e) { console.error(e); } ctx.restore(); }
-  if (hover && !drag && typeof effKind === 'function' && ['brush', 'blend', 'linefix'].includes(effKind())) {
-    const b = curSub(), r = Math.max(.5, (b.size || 10) / 2 * V.zoom);
+  const drawing = drag && drag.kind === 'brush' && drag.stroke;
+  if (hover && (!drag || drawing) && typeof effKind === 'function' && ['brush', 'blend', 'linefix'].includes(effKind())) {
+    const b = curSub();
+    // 그리는 중에는 지금 찍히는 실제 크기를 보여 준다
+    const size = drawing && drag.stroke.lastSize ? drag.stroke.lastSize : (b.size || 10);
+    const r = Math.max(.5, size / 2 * V.zoom);
     ctx.beginPath(); ctx.arc(hover.x, hover.y, r, 0, Math.PI * 2);
     ctx.lineWidth = 2.5; ctx.strokeStyle = 'rgba(0,0,0,.5)'; ctx.stroke();
     ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.stroke();
+    if (!drawing && b.pSize && b.minSize < .95 && r > 4) {
+      // 펜 필압이 약할 때의 최소 크기
+      ctx.beginPath(); ctx.arc(hover.x, hover.y, Math.max(.5, r * b.minSize), 0, Math.PI * 2);
+      ctx.setLineDash([3, 3]); ctx.strokeStyle = 'rgba(255,255,255,.7)'; ctx.stroke(); ctx.setLineDash([]);
+    }
     if (r < 4) { ctx.beginPath(); ctx.moveTo(hover.x - 6, hover.y); ctx.lineTo(hover.x + 6, hover.y); ctx.moveTo(hover.x, hover.y - 6); ctx.lineTo(hover.x, hover.y + 6); ctx.stroke(); }
   }
 }

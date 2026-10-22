@@ -1,6 +1,6 @@
 /* WebPaint 서비스 워커: 앱 파일을 설치 시 저장해 오프라인에서도 실행한다.
  * 온라인일 때는 항상 서버의 최신 파일을 쓰고, 오프라인일 때만 저장본을 쓴다. */
-const VERSION = 'webpaint-v2.0.3';
+const VERSION = 'webpaint-v2.0.4';
 const FONT_CACHE = 'webpaint-fonts';
 const APP_FILES = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',

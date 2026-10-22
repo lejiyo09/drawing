@@ -102,6 +102,7 @@ class Stroke {
   put(x, y, size, a, dir) {
     const ctx = this.ctx, b = this.b;
     let r = size / 2;
+    this.lastSize = size;
     if (r < .5) { a *= (r / .5) ** 2; r = .5; }
     if (b.sizeJ) r *= 1 - this.rand() * b.sizeJ;
     if (b.scatter) { const ang = this.rand() * Math.PI * 2, d = this.rand() * b.scatter * size; x += Math.cos(ang) * d; y += Math.sin(ang) * d; }
@@ -179,6 +180,19 @@ class Stroke {
     const pend = this.raw.filter(r => r.pending);
     this.raw = this.raw.filter(r => !r.pending);
     for (const r of pend) this.addRaw(r.x, r.y, r.p);
+  }
+  /* 손떨림 보정은 획이 펜보다 늦게 따라오고, 손을 떼면 남은 구간을 마저 그린다(finish).
+   * 그 남은 구간을 미리 tctx에 그려 두면 화면에 보이는 획과 손을 뗀 뒤의 결과가 같아진다. */
+  drawTail(tctx) {
+    const raw = this.raw.filter(r => !r.pending);
+    const last = raw[raw.length - 1];
+    if (!last || this.win <= 1 || !this.pts.length) return null;
+    const t = Object.create(Stroke.prototype);
+    const pts = this.pts.slice(); pts[pts.length - 1] = { ...pts[pts.length - 1] };
+    Object.assign(t, this, { ctx: tctx, pts, raw: raw.slice(), bbox: null, dirty: null, constrain: null, prevColor: this.prevColor && this.prevColor.slice() });
+    tctx.fillStyle = '#000';
+    for (let i = 1; i < this.win; i++) t.addRaw(last.x, last.y, last.p);
+    return t.bbox;
   }
   finish() {
     const raw = this.raw.filter(r => !r.pending);
@@ -326,9 +340,26 @@ HANDLERS.brush = {
       drag.stroke.addRaw(d.x, d.y, pressureOf(ev));
     }
     markDirty(drag.stroke.takeDirty());
+    this.updateTail();
+  },
+  updateTail() {
+    const st = drag.stroke, o = A.overlay;
+    if (!o || st.win <= 1) return;
+    const tail = T.get('tail');
+    if (drag.tailRect) tail.ctx.clearRect(drag.tailRect.x, drag.tailRect.y, drag.tailRect.w, drag.tailRect.h);
+    const bb = st.drawTail(tail.ctx);
+    o.tail = tail.canvas;
+    markDirty(Rect.union(drag.tailRect, bb));
+    drag.tailRect = bb;
+  },
+  clearTail() {
+    if (drag.tailRect) { T.get('tail').ctx.clearRect(drag.tailRect.x, drag.tailRect.y, drag.tailRect.w, drag.tailRect.h); markDirty(drag.tailRect); }
+    drag.tailRect = null;
+    if (A.overlay) A.overlay.tail = null;
   },
   up() {
     const st = drag.stroke, L = findLayer(A.layerId);
+    this.clearTail();
     if (!drag.line) st.finish();
     markDirty(st.takeDirty());
     const last = st.pts[st.pts.length - 1];
@@ -342,7 +373,7 @@ HANDLERS.brush = {
     } else commitOverlay(curSub().name, st.bbox);
     if (!st.b.eraser) pushColorHistory();
   },
-  cancel() { const st = drag.stroke; if (st && st.bbox) { T.get('buffer').ctx.clearRect(st.bbox.x, st.bbox.y, st.bbox.w, st.bbox.h); markDirty(st.bbox); } A.overlay = null; },
+  cancel() { this.clearTail(); const st = drag.stroke; if (st && st.bbox) { T.get('buffer').ctx.clearRect(st.bbox.x, st.bbox.y, st.bbox.w, st.bbox.h); markDirty(st.bbox); } A.overlay = null; },
 };
 
 /* ---------- 색 혼합 · 흐리기 · 유동화 ---------- */
