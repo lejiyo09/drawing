@@ -437,6 +437,7 @@ const PropUI = {
       if (Text.selId) this.textObjProps(add, btn); else hint('텍스트나 말풍선을 클릭해 선택합니다. 더블클릭하면 글자를 고칩니다. 오른쪽 아래 핸들로 크기를 바꿉니다.');
       add(btn('텍스트 레이어 래스터화', () => Vector.rasterize()));
     } else if (L.type === '3d') this.threeProps(L, add, hint, btn);
+    else if (L.type === 'file') FileObj.props(add, hint, btn);
     else if (Manga.frameFolderOf(L)) {
       const F = Manga.frameFolderOf(L), f = F.data.frame;
       hint(`${F.name}: 꼭짓점을 끌거나 컷 안을 끌어 옮깁니다.`);
@@ -585,7 +586,7 @@ const BLENDS = [['source-over', '표준'], ['darken', '비교(어두움)'], ['mu
 const blendName = b => (b === 'pass' ? '통과' : (BLENDS.find(x => x[0] === b) || [, '표준'])[1]);
 const EYE_ON = '<svg viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
 const EYE_OFF = '<svg viewBox="0 0 24 24"><path d="M3 3l18 18M10.6 5.1A10 10 0 0112 5c6.5 0 10 7 10 7a17 17 0 01-3.2 4.1M6.6 6.6C3.9 8.3 2 12 2 12s3.5 7 10 7c1.7 0 3.2-.5 4.5-1.2"/></svg>';
-const TYPE_BADGE = { vector: '벡터', text: '텍스트', adjust: '보정', fill: '채우기', gradient: '그라데이션', '3d': '3D' };
+const TYPE_BADGE = { vector: '벡터', text: '텍스트', adjust: '보정', fill: '채우기', gradient: '그라데이션', '3d': '3D', file: '파일' };
 let dragLayer = null;
 function renderLayers() {
   const list = $('#layers');
@@ -987,7 +988,7 @@ function closeMenus() { if (openMenu) openMenu.classList.remove('open'); openMen
 function newLayerMenu(anchor) {
   closeMenus();
   const pop = $('#menupop'); pop.innerHTML = '';
-  const items = ['newLayer', 'newVector', 'newFolder', 'newFill', 'newGradient', 'new3d', 'newTone', 'newAnim', 'newFrame', '-', ...Object.keys(ADJUST).map(k => 'adj-' + k)];
+  const items = ['newLayer', 'newVector', 'newFolder', 'newFileObj', 'newFill', 'newGradient', 'new3d', 'newTone', 'newAnim', 'newFrame', '-', ...Object.keys(ADJUST).map(k => 'adj-' + k)];
   for (const id of items) {
     if (id === '-') { pop.append(el('div', { class: 'msep' }, )); pop.append(el('div', { class: 'mhead', text: '보정 레이어' })); continue; }
     const it = el('button', { class: 'mi' }, el('span', { class: 'chk' }), el('span', { class: 'lbl', text: CMDS[id].label }));
@@ -1279,8 +1280,8 @@ OVERLAYS.screen.push(ctx => {
 HANDLERS.object = {
   down(e, s) {
     const L = active();
-    const route = L.type === 'vector' ? Vector.objectHandler : L.type === 'text' ? Text.objectHandler : L.type === '3d' ? Three3D.objectHandler : Manga.frameFolderOf(L) ? Manga.objectHandler : L.type === 'gradient' ? GradObj : null;
-    if (!route) { toast('조작 도구는 벡터·텍스트·3D·컷 테두리·그라데이션 레이어에서 사용합니다.'); return false; }
+    const route = L.type === 'vector' ? Vector.objectHandler : L.type === 'text' ? Text.objectHandler : L.type === '3d' ? Three3D.objectHandler : L.type === 'file' ? FileObj.objectHandler : Manga.frameFolderOf(L) ? Manga.objectHandler : L.type === 'gradient' ? GradObj : null;
+    if (!route) { toast('조작 도구는 벡터·텍스트·3D·파일 오브젝트·컷 테두리·그라데이션 레이어에서 사용합니다.'); return false; }
     if (L.locked) { toast('잠긴 레이어입니다.', true); return false; }
     drag.route = route;
     return route.down.call(route, e, s);
@@ -1476,6 +1477,8 @@ function bindUI() {
   $('#tf-flipv').addEventListener('click', () => { if (A.float && A.float.mode === 'affine') { A.float.sy *= -1; floatDirty(); } });
   $('#file-open').addEventListener('change', e => { const f = e.target.files[0]; if (f) openFile(f, false); e.target.value = ''; });
   $('#file-import').addEventListener('change', e => { const fs = [...e.target.files]; if (fs.length) importFilesAsLayers(fs); e.target.value = ''; });
+  $('#file-fileobj').addEventListener('change', e => { const fs = [...e.target.files]; if (fs.length) FileObj.create(fs.map(file => ({ file }))); e.target.value = ''; });
+  $('#file-fileobj-replace').addEventListener('change', e => { const f = e.target.files[0], L = findLayer(FileObj.replaceTarget); if (f && L) FileObj.replaceWith(L, f); e.target.value = ''; });
   $('#file-material').addEventListener('change', e => { const f = e.target.files[0]; if (f) Materials.importFile(f); e.target.value = ''; });
   $('#page-prev').addEventListener('click', () => Pages.switchTo(P.index - 1));
   $('#page-next').addEventListener('click', () => Pages.switchTo(P.index + 1));

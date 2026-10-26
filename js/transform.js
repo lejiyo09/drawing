@@ -201,6 +201,7 @@ function cancelFloat() {
 function startTransform(mode) {
   if (A.float || drag) return;
   const L = active();
+  if (L.type === 'file') { setTool('object'); toast('파일 오브젝트는 조작 도구로 크기·회전을 바꿉니다. 원본에서 다시 그려 화질이 유지됩니다.'); return; }
   if (L.type === 'text' || L.type === '3d') { toast('텍스트·3D 레이어는 오브젝트 도구로 크기와 위치를 바꿉니다.'); return; }
   if (beginFloat('transform')) { if (mode && mode !== 'affine') setFloatMode(mode); $('#tf-mode').value = A.float.mode; }
   requestRender();

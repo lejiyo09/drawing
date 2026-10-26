@@ -284,7 +284,7 @@ Vector.simplifyAll = () => {
 };
 Vector.rasterize = () => {
   const L = active();
-  if (!['vector', 'text', 'fill', 'gradient', '3d'].includes(L.type)) { toast('래스터화할 레이어가 아닙니다.'); return; }
+  if (!['vector', 'text', 'fill', 'gradient', '3d', 'file'].includes(L.type)) { toast('래스터화할 레이어가 아닙니다.'); return; }
   structural('래스터화', [L], () => { L.type = 'raster'; L.data = {}; L.rev = revSeq++; L.renderedRev = L.rev; });
 };
 OVERLAYS.doc.push((ctx, px) => {

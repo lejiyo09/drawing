@@ -282,6 +282,8 @@ async function serializeProject(asBlob) {
     for (const L of pg.layers) {
       const o = {}; for (const k of LAYER_SAVE_KEYS) o[k] = L[k] === undefined ? null : structuredClone(L[k]);
       o.canvas = await img(L.canvas); o.mask = await img(L.mask);
+      // 파일 오브젝트는 원본 이미지를 함께 저장한다
+      if (L.type === 'file') { const fe = FileObj.map.get(L.data.srcId); if (fe) { o.fileSrc = asBlob ? fe.blob : await blobToDataURL(fe.blob); o.fileName = fe.name; } }
       layers.push(o);
     }
     const anim = structuredClone(pg.anim || defaultAnim());
@@ -316,6 +318,7 @@ async function loadProject(p) {
       for (const k of LAYER_SAVE_KEYS) if (k !== 'id' && k !== 'type' && o[k] !== undefined && o[k] !== null) L[k] = o[k];
       L.fx = Object.assign({ color: null, border: null, tone: null }, o.fx || {});
       if (o.data) L.data = Object.assign(defaultData(L.type), o.data);
+      if (L.type === 'file' && o.fileSrc && !FileObj.map.has(L.data.srcId)) { const blob = o.fileSrc instanceof Blob ? o.fileSrc : await (await fetch(o.fileSrc)).blob(); FileObj.register(L.data.srcId, blob, o.fileName); }
       if (L.canvas) { const b = await dataToBitmap(o.canvas); L.ctx.clearRect(0, 0, D.w, D.h); if (b) L.ctx.drawImage(b, 0, 0); }
       if (o.mask) { const b = await dataToBitmap(o.mask); L.mask = mkCanvas(D.w, D.h); if (b) L.mask.getContext('2d').drawImage(b, 0, 0); }
       L.rev = revSeq++;

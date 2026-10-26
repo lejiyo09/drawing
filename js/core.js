@@ -146,7 +146,7 @@ const P = { pages: [], index: 0, name: '제목 없음' };
 let layerSeq = 1, revSeq = 1;
 function defaultAnim() { return { fps: 12, length: 24, frame: 0, tracks: {}, camera: { on: false, keys: {} }, onion: { on: true, before: 1, after: 1 } }; }
 
-const LAYER_TYPE_NAMES = { raster: '래스터', vector: '벡터', text: '텍스트', folder: '폴더', adjust: '보정', fill: '채우기', gradient: '그라데이션', '3d': '3D', paper: '용지' };
+const LAYER_TYPE_NAMES = { raster: '래스터', vector: '벡터', text: '텍스트', folder: '폴더', adjust: '보정', fill: '채우기', gradient: '그라데이션', '3d': '3D', file: '파일 오브젝트', paper: '용지' };
 function defaultData(type) {
   switch (type) {
     case 'vector': return { strokes: [] };
@@ -156,6 +156,7 @@ function defaultData(type) {
     case 'fill': return { color: '#808080' };
     case 'gradient': return { a: { x: 0, y: 0 }, b: { x: 100, y: 0 }, shape: 'linear', from: '#000000', to: '#ffffff', toTrans: false };
     case '3d': return { objects: [], camera: null, mode: 'shade', lightAz: 40, lightEl: 50 };
+    case 'file': return { srcId: null, file: '', w: 1, h: 1, x: 0, y: 0, s: 1, rot: 0, fx: 1, fy: 1 };
     default: return {};
   }
 }
