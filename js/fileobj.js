@@ -205,11 +205,11 @@ const LayerExport = {
       L.opacity = op;
       for (const [l, v] of saved) l.visible = v;
     } else {
-      x.drawImage(layerSource(L, r, { raw: true, export: true }, 'lexp'), 0, 0);
+      drawSrcFull(x, layerSource(L, r, { raw: true, export: true }, 'lexp'));
       if (L.clip) {
         const sib = kids(L.parent), i = sib.indexOf(L);
         let b = null; for (let k = i - 1; k >= 0; k--) if (!sib[k].clip) { b = sib[k]; break; }
-        if (b && b.canvas) { x.globalCompositeOperation = 'destination-in'; x.drawImage(layerSource(b, r, { raw: true }, 'lexp2'), 0, 0); x.globalCompositeOperation = 'source-over'; }
+        if (b && b._hasCanvas) { x.globalCompositeOperation = 'destination-in'; drawSrcFull(x, layerSource(b, r, { raw: true }, 'lexp2')); x.globalCompositeOperation = 'source-over'; }
       }
     }
     const out = mkCanvas(D.w, D.h), ox = out.getContext('2d');

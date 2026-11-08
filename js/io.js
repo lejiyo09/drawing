@@ -45,9 +45,9 @@ function layerPixels(L) {
   t.clearRect(0, 0, D.w, D.h);
   if (L.fx && (L.fx.color || L.fx.border || L.fx.tone)) {
     const m = L.mask; L.mask = null;
-    t.drawImage(layerSource(L, Rect.full(), { raw: true, frame: D.anim.frame }, 'exp'), 0, 0);
+    drawSrcFull(t, layerSource(L, Rect.full(), { raw: true, frame: D.anim.frame }, 'exp'));
     L.mask = m;
-  } else if (L.canvas) t.drawImage(L.canvas, 0, 0);
+  } else if (L._hasCanvas) drawSrcFull(t, srcOf(L));
   return t.getImageData(0, 0, D.w, D.h).data.slice();
 }
 function maskAlpha(L) {
@@ -281,7 +281,9 @@ async function serializeProject(asBlob) {
     const layers = [];
     for (const L of pg.layers) {
       const o = {}; for (const k of LAYER_SAVE_KEYS) o[k] = L[k] === undefined ? null : structuredClone(L[k]);
-      o.canvas = await img(L.canvas); o.mask = await img(L.mask);
+      if (L.type === 'raster' && !L._full) { const cp = L._compact; o.canvas = cp.c ? await img(cp.c) : null; o.canvasXY = [cp.x, cp.y]; }
+      else o.canvas = L._hasCanvas ? await img(L._full || L.canvas) : null;
+      o.mask = await img(L.mask);
       // 파일 오브젝트는 원본 이미지를 함께 저장한다
       if (L.type === 'file') { const fe = FileObj.map.get(L.data.srcId); if (fe) { o.fileSrc = asBlob ? fe.blob : await blobToDataURL(fe.blob); o.fileName = fe.name; } }
       layers.push(o);
@@ -319,7 +321,12 @@ async function loadProject(p) {
       L.fx = Object.assign({ color: null, border: null, tone: null }, o.fx || {});
       if (o.data) L.data = Object.assign(defaultData(L.type), o.data);
       if (L.type === 'file' && o.fileSrc && !FileObj.map.has(L.data.srcId)) { const blob = o.fileSrc instanceof Blob ? o.fileSrc : await (await fetch(o.fileSrc)).blob(); FileObj.register(L.data.srcId, blob, o.fileName); }
-      if (L.canvas) { const b = await dataToBitmap(o.canvas); L.ctx.clearRect(0, 0, D.w, D.h); if (b) L.ctx.drawImage(b, 0, 0); }
+      if (L.type === 'raster') {
+        const b = await dataToBitmap(o.canvas);
+        if (b && o.canvasXY) { const c = mkCanvas(b.width, b.height); c.getContext('2d').drawImage(b, 0, 0); setCompact(L, c, o.canvasXY[0], o.canvasXY[1]); }
+        else setCompactFromImage(L, b);
+        if (b && b.close) b.close();
+      } else if (L._hasCanvas) { const b = await dataToBitmap(o.canvas); L.ctx.clearRect(0, 0, D.w, D.h); if (b) L.ctx.drawImage(b, 0, 0); }
       if (o.mask) { const b = await dataToBitmap(o.mask); L.mask = mkCanvas(D.w, D.h); if (b) L.mask.getContext('2d').drawImage(b, 0, 0); }
       L.rev = revSeq++;
       // 저장된 캐시 이미지를 그대로 쓰고, 텍스트·3D만 글꼴·엔진이 준비되면 다시 그린다
@@ -349,6 +356,17 @@ function psdLayers(doc, parent, fit) {
     const t = target.getContext('2d'); t.imageSmoothingQuality = 'high';
     t.drawImage(c, fit.x + x * fit.s, fit.y + y * fit.s, w * fit.s, h * fit.s);
   };
+  // PSD 레이어 영역 크기의 조각만 만든다 (문서 크기 캔버스를 레이어마다 만들지 않음)
+  const putPiece = (L, rgba, x, y, w, h) => {
+    if (!w || !h) return;
+    const src = mkCanvas(w, h);
+    src.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(rgba.buffer, rgba.byteOffset, w * h * 4), w, h), 0, 0);
+    if (fit.s === 1 && Number.isInteger(fit.x) && Number.isInteger(fit.y)) { setCompact(L, src, fit.x + x, fit.y + y); return; }
+    const px = fit.x + x * fit.s, py = fit.y + y * fit.s, ix = Math.floor(px), iy = Math.floor(py);
+    const pc = mkCanvas(Math.ceil(w * fit.s + px - ix) + 1, Math.ceil(h * fit.s + py - iy) + 1), pcx = pc.getContext('2d');
+    pcx.imageSmoothingQuality = 'high'; pcx.drawImage(src, px - ix, py - iy, w * fit.s, h * fit.s);
+    setCompact(L, pc, ix, iy);
+  };
   const toMask = m => {
     const rgba = new Uint8ClampedArray(doc.width * doc.height * 4);
     for (let i = 0; i < m.length; i++) rgba[i * 4 + 3] = m[i];
@@ -359,12 +377,12 @@ function psdLayers(doc, parent, fit) {
       let L;
       if (n.kind === 'folder') { L = newLayer({ type: 'folder', name: n.name, parent: pid, opacity: n.opacity, blend: n.blend, visible: !n.hidden, data: { open: n.open, anim: false, frame: null } }); out.push(L); add(n.children, L.id); }
       else if (n.kind === 'adjust') { L = newLayer({ type: 'adjust', name: n.name, parent: pid, opacity: n.opacity, visible: !n.hidden, clip: n.clip, data: { kind: n.adjust.kind, params: n.adjust.params } }); out.push(L); }
-      else { L = newLayer({ name: n.name, parent: pid, opacity: n.opacity, blend: n.blend, visible: !n.hidden, clip: n.clip, alphaLock: n.alphaLock }); draw(L.canvas, n.rgba, n.x, n.y, n.w, n.h); out.push(L); }
+      else { L = newLayer({ name: n.name, parent: pid, opacity: n.opacity, blend: n.blend, visible: !n.hidden, clip: n.clip, alphaLock: n.alphaLock }); putPiece(L, n.rgba, n.x, n.y, n.w, n.h); out.push(L); }
       if (n.mask) L.mask = toMask(n.mask);
     }
   };
   if (doc.nodes.length) add(doc.nodes, parent);
-  else { const L = newLayer({ name: '배경', parent }); draw(L.canvas, doc.composite, 0, 0, doc.width, doc.height); out.push(L); }
+  else { const L = newLayer({ name: '배경', parent }); putPiece(L, doc.composite, 0, 0, doc.width, doc.height); out.push(L); }
   return out;
 }
 // 캔버스 안에 전부 들어가도록 줄여서 가운데에 놓는 배율·위치
@@ -374,6 +392,7 @@ async function loadPSD(buf, name) {
   newDocument({ w: doc.width, h: doc.height, dpi: doc.dpi, paper: null, name });
   D.layers = psdLayers(doc, 0, { s: 1, x: 0, y: 0 });
   D.activeId = D.layers[D.layers.length - 1].id;
+  MemUI.warnIfLarge(doc.width * doc.height * 4 * D.layers.filter(L => L._hasCanvas).length);
   H.clear(); markDirty(); renderLayers(); Pages.store();
   for (const L of D.layers) queueThumb(L);
 }
@@ -425,6 +444,7 @@ async function importFilesAsLayers(files, target, where) {
       D.activeId = top.id;
     }
   });
+  Mem.run();
   toast(`${built.length}개를 레이어로 가져왔습니다.` + (shrunk ? ` 캔버스보다 큰 ${shrunk}개는 전부 보이도록 줄였습니다.` : ''));
   return true;
 }

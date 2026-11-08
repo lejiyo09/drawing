@@ -54,7 +54,7 @@ function dupLayer() {
       for (const k of PROPS) if (k !== 'name' && k !== 'type') n[k] = L[k];
       n.parent = parent; n.fx = structuredClone(L.fx); n.keys = L.keys ? structuredClone(L.keys) : null;
       n.data = L.type === 'vector' ? { ...L.data, strokes: L.data.strokes.map(s => ({ ...s, id: uid() })) } : structuredClone(L.data);
-      if (n.canvas && L.canvas) { n.ctx.clearRect(0, 0, D.w, D.h); n.ctx.drawImage(L.canvas, 0, 0); }
+      copyPixels(n, L);
       if (L.mask) n.mask = cloneCanvas(L.mask);
       n.rev = revSeq++; n.renderedRev = n.rev;
       return n;
@@ -181,8 +181,8 @@ function addMask(mode) {
 }
 function deleteMask(apply) {
   const L = active(); if (!L || !L.mask) return;
-  structural(apply ? '마스크 적용' : '마스크 삭제', apply && L.canvas ? [L] : [], () => {
-    if (apply && L.canvas) { L.ctx.save(); L.ctx.globalCompositeOperation = 'destination-in'; L.ctx.drawImage(L.mask, 0, 0); L.ctx.restore(); }
+  structural(apply ? '마스크 적용' : '마스크 삭제', apply && L._hasCanvas ? [L] : [], () => {
+    if (apply && L._hasCanvas) { L.ctx.save(); L.ctx.globalCompositeOperation = 'destination-in'; L.ctx.drawImage(L.mask, 0, 0); L.ctx.restore(); }
     L.mask = null; L.maskEdit = false;
   });
 }
@@ -243,7 +243,7 @@ function flipLayer(horizontal) {
 let clipboard = null;
 function copySel(cut) {
   const L = active();
-  if (!L.canvas || L.type === 'paper') return;
+  if (!L._hasCanvas || L.type === 'paper') return;
   const bb = Sel.has ? Sel.bbox : Rect.full();
   const c = cloneCanvas(L.canvas, bb);
   if (Sel.has) { const x = c.getContext('2d'); x.globalCompositeOperation = 'destination-in'; x.drawImage(Sel.canvas, bb.x, bb.y, bb.w, bb.h, 0, 0, bb.w, bb.h); }

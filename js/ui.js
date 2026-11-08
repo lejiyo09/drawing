@@ -623,7 +623,7 @@ function renderLayers() {
     }
     const row = el('div', { class: 'lrow' + (L.id === D.activeId ? ' active' : '') + (L.clip ? ' clip' : '') + (shownInTree(L) ? '' : ' hidden-layer') + (L.type === 'folder' ? ' folder' : ''), draggable: 'true', role: 'option', 'aria-selected': L.id === D.activeId ? 'true' : 'false', style: `--depth:${depth}` },
       ...parts, el('div', { class: 'lmeta' }, nameEl, el('div', { class: 'lsub' }, `${Math.round(L.opacity * 100)}% ${L.type === 'paper' ? '용지' : blendName(L.blend)}`, badges)));
-    row.addEventListener('click', ev => { if ((ev.ctrlKey || ev.metaKey) && L.canvas) { selFromLayer(L); return; } selectLayer(L); });
+    row.addEventListener('click', ev => { if ((ev.ctrlKey || ev.metaKey) && L._hasCanvas) { selFromLayer(L); return; } selectLayer(L); });
     nameEl.addEventListener('dblclick', ev => {
       ev.stopPropagation();
       const inp = el('input', { value: L.name, 'aria-label': '레이어 이름' });
@@ -674,7 +674,7 @@ function renderLayerProps() {
   num.addEventListener('change', () => setLayerProp(L, 'opacity', clamp(parseInt(num.value) || 0, 0, 100) / 100, '불투명도 변경'));
   const tg = (id, label) => { const c = CMDS[id], on = !!c.check(); const b = el('button', { class: 'cmd' + (on ? ' on' : ''), text: label, title: c.label, 'aria-pressed': on ? 'true' : 'false', type: 'button' }); b.addEventListener('click', () => runCmd(id)); return b; };
   box.append(el('div', { class: 'lp-row' }, sel), el('div', { class: 'lp-row' }, el('span', { class: 'hint', text: '불투명도' }), rng, num),
-    el('div', { class: 'lp-toggles' }, tg('clipLayer', '클리핑'), L.canvas ? tg('alphaLock', '투명 잠금') : null, tg('lockLayer', '잠금'), tg('refLayer', '참조'), tg('draftLayer', '밑그림')));
+    el('div', { class: 'lp-toggles' }, tg('clipLayer', '클리핑'), L._hasCanvas ? tg('alphaLock', '투명 잠금') : null, tg('lockLayer', '잠금'), tg('refLayer', '참조'), tg('draftLayer', '밑그림')));
 }
 // 레이어 속성 패널: 효과·종류별 설정
 const LayerPropUI = {
@@ -709,7 +709,7 @@ const LayerPropUI = {
     // 레이어 마스크
     add(el('div', { class: 'psub', text: '레이어 마스크' }));
     if (!L.mask) add(el('div', { class: 'inline-row wrap' }, btn(Sel.has ? '선택 범위로 마스크' : '마스크 작성', () => addMask(Sel.has ? 'sel' : 'show')), btn('전체 가린 마스크', () => addMask('hide'))));
-    else add(el('div', { class: 'inline-row wrap' }, btn(L.maskEdit ? '마스크 편집 끝' : '마스크 편집', () => toggleMaskEdit(L)), btn(L.maskOn ? '마스크 끄기' : '마스크 켜기', () => setLayerProp(L, 'maskOn', !L.maskOn, '마스크 사용')), L.canvas ? btn('마스크 적용', () => deleteMask(true)) : null, btn('마스크 삭제', () => deleteMask(false))));
+    else add(el('div', { class: 'inline-row wrap' }, btn(L.maskEdit ? '마스크 편집 끝' : '마스크 편집', () => toggleMaskEdit(L)), btn(L.maskOn ? '마스크 끄기' : '마스크 켜기', () => setLayerProp(L, 'maskOn', !L.maskOn, '마스크 사용')), L._hasCanvas ? btn('마스크 적용', () => deleteMask(true)) : null, btn('마스크 삭제', () => deleteMask(false))));
     // 레이어 효과
     if (L.type !== 'adjust') {
       add(el('div', { class: 'psub', text: '효과' }));
@@ -851,6 +851,7 @@ cmd('rotCCW', '캔버스 90° 회전 (반시계 방향)', null, () => rotateCanv
 cmd('rot180', '캔버스 180° 회전', null, () => rotateCanvasDoc('180'));
 cmd('canvasFlipH', '캔버스 좌우 반전', null, () => rotateCanvasDoc('fh'));
 cmd('pressure', '필압 검출 레벨 조절…', null, () => Dialogs.pressure());
+cmd('settings', '환경 설정…', 'Ctrl+K', () => Dialogs.settings());
 cmd('undo', '실행 취소', 'Ctrl+Z', () => H.undo(), { enabled: () => H.idx > 0 || !!A.float });
 cmd('redo', '다시 실행', ['Ctrl+Y', 'Ctrl+Shift+Z'], () => H.redo(), { enabled: () => H.idx < H.stack.length });
 cmd('cut', '잘라내기', 'Ctrl+X', () => copySel(true));
@@ -937,7 +938,7 @@ cmd('about', 'WebPaint 정보', null, () => Dialogs.about());
 cmd('install', '앱으로 설치 (오프라인 사용)', null, () => PWA.install(), { enabled: () => !!PWA.prompt });
 
 const MENUS = [
-  ['파일', ['new', 'open', '-', 'saveProject', 'export', 'quickPng', 'quickPsd', 'animExport', '-', 'import', '-', 'pressure', 'install']],
+  ['파일', ['new', 'open', '-', 'saveProject', 'export', 'quickPng', 'quickPsd', 'animExport', '-', 'import', '-', 'settings', 'pressure', 'install']],
   ['편집', ['undo', 'redo', '-', 'cut', 'copy', 'paste', 'clear', 'clearOutside', 'fillSel', '-', 'transform', 'freeTransform', 'meshTransform', 'puppet', 'flipH', 'flipV', '-', 'canvasSize', 'resolution', 'rotCW', 'rotCCW', 'rot180', 'canvasFlipH', '-', ...Object.keys(ADJUST).map(k => 'f-' + k)]],
   ['레이어', ['newLayer', 'newVector', 'newFolder', 'wrapFolder', 'newFill', 'newGradient', 'new3d', 'newTone', '-', ...Object.keys(ADJUST).map(k => 'adj-' + k), '-', 'dupLayer', 'delLayer', 'mergeDown', 'mergeVisible', 'rasterize', '-', 'layerUp', 'layerDown', '-', 'clipLayer', 'alphaLock', 'lockLayer', 'draftLayer', 'refLayer', '-', 'maskNew', 'maskEdit', 'maskApply', 'maskDelete', '-', 'comps', 'selFromLayer']],
   ['선택 범위', ['selectAll', 'deselect', 'invertSel', '-', 'growSel', 'shrinkSel', 'featherSel', '-', 'quickMask', 'selStore']],
@@ -1022,6 +1023,15 @@ const Modal = {
 };
 $('#modal-back').addEventListener('pointerdown', e => { if (e.target.id === 'modal-back') Modal.dismiss(); });
 const frow = (label, ...ctl) => el('div', { class: 'frow' }, el('span', { text: label }), ...ctl);
+const MB = n => Math.round(n / 1048576).toLocaleString('ko-KR') + 'MB';
+const MemUI = {
+  // 레이어를 모두 문서 크기로 펼쳤을 때 필요한 양이 기기 메모리에 비해 크면 알린다
+  warnIfLarge(fullBytes) {
+    const dm = navigator.deviceMemory || 0, now = Mem.estimate();
+    if (!Mem.enabled && dm && fullBytes > dm * 1073741824 * .3) toast(`레이어가 많은 큰 파일입니다 (펼치면 약 ${MB(fullBytes)}). 그림이 안 보이면 환경 설정에서 "메모리 절약"을 켜 주세요.`, true);
+    else if (Mem.enabled && fullBytes > now * 2) toast(`메모리 절약: 레이어를 그림 부분만 보관해 약 ${MB(fullBytes)} → ${MB(now)}로 줄였습니다.`);
+  },
+};
 const Dialogs = {
   prompt(title, def, cb) {
     const inp = el('input', { type: 'text', value: def });
@@ -1211,6 +1221,22 @@ const Dialogs = {
     for (const s of D.selSaved) list.append(el('div', { class: 'inline-row' }, el('span', { class: 'grow', text: s.name }), el('button', { class: 'cmd', text: '불러오기', type: 'button', onclick: () => { Modal.close(); loadSelection(s.id); } }), el('button', { class: 'cmd', text: '추가', type: 'button', onclick: () => { Modal.close(); loadSelection(s.id, 'add'); } })));
     if (!D.selSaved.length) list.append(el('p', { class: 'note', text: '저장한 선택 범위가 없습니다.' }));
     Modal.open('선택 범위 저장·불러오기', [list], [['현재 선택 범위 저장', () => { if (!Sel.has) { toast('선택 범위가 없습니다.'); return; } Dialogs.prompt('선택 범위 이름', `선택 범위 ${D.selSaved.length + 1}`, v => saveSelection(v)); }], ['닫기', () => Modal.close(), true]], { noFocus: true });
+  },
+  settings() {
+    const usage = el('p', { class: 'note' });
+    const upd = () => {
+      const full = D.layers.filter(L => L._hasCanvas).length * D.w * D.h * 4, now = Mem.estimate(), dm = navigator.deviceMemory;
+      usage.textContent = `지금 레이어 보관에 약 ${MB(now)} 사용 중 (모두 펼치면 약 ${MB(full)})` + (dm ? ` · 이 기기 메모리 약 ${dm}GB` : '');
+    };
+    const mem = checkRow('메모리 절약 (편집하지 않는 레이어는 그림이 있는 부분만 보관)', () => Mem.enabled, v => { Mem.setEnabled(v); setTimeout(upd, 50); });
+    upd();
+    Modal.open('환경 설정', [
+      el('div', { class: 'psub', text: '성능' }), mem,
+      el('p', { class: 'note', text: '켜 두면 레이어가 많은 큰 파일도 램이 적은 기기(크롬북 등)에서 열립니다. 편집 중인 레이어는 그대로 두고, 다른 레이어를 고를 때 잠깐 펼칩니다. 끄면 레이어를 한 번 펼친 뒤 그대로 두어 레이어를 오갈 때 조금 빠르지만 메모리를 훨씬 많이 씁니다.' }),
+      usage,
+      el('div', { class: 'psub', text: '입력' }),
+      el('button', { class: 'cmd', type: 'button', text: '필압 검출 레벨 조절…', onclick: () => { Modal.close(); Dialogs.pressure(); } }),
+    ], [['닫기', () => Modal.close(), true]], { noFocus: true });
   },
   pressure() {
     const g = el('input', { type: 'range', min: .3, max: 3, step: .05, value: S.pressureGamma, style: 'width:100%;accent-color:var(--accent)' });

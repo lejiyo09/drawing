@@ -85,8 +85,8 @@ function featherSel(px) {
   selApply('경계 흐리기', 'new', x => blurDraw(x, c, px * 2, Rect.full()));
 }
 function selFromLayer(L) {
-  if (!L.canvas) { toast('이 레이어에서는 선택 범위를 만들 수 없습니다.', true); return; }
-  const c = cloneCanvas(L.canvas);
+  if (!L._hasCanvas) { toast('이 레이어에서는 선택 범위를 만들 수 없습니다.', true); return; }
+  const c = mkCanvas(D.w, D.h); drawSrcFull(c.getContext('2d'), srcOf(L));
   selApply('레이어에서 선택 범위', 'new', x => x.drawImage(c, 0, 0));
 }
 // 선택 범위 저장 (선택 범위 레이어에 해당)
@@ -155,7 +155,7 @@ function refImage(ref) {
   if (ref === 'layer') {
     t.clearRect(0, 0, D.w, D.h);
     const L = active();
-    if (L.canvas) t.drawImage(L.canvas, 0, 0);
+    if (L._hasCanvas) drawSrcFull(t, srcOf(L));
   } else compositeInto(t, Rect.full(), { raw: true, excludeDraft: true, onlyRef: ref === 'ref' });
   return t.getImageData(0, 0, D.w, D.h).data;
 }

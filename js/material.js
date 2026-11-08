@@ -84,7 +84,7 @@ const Materials = {
   /* ---------- 등록 ---------- */
   cropActive() {
     const L = active();
-    if (!L.canvas) { toast('이 레이어는 소재로 등록할 수 없습니다.', true); return null; }
+    if (!L._hasCanvas) { toast('이 레이어는 소재로 등록할 수 없습니다.', true); return null; }
     const bb = Sel.has ? Sel.bbox : contentBBox(L.canvas);
     if (!bb) { toast('레이어가 비어 있습니다.', true); return null; }
     const c = cloneCanvas(L.canvas, bb);

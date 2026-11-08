@@ -41,7 +41,8 @@ const Pages = {
     if (Text.editing) Text.commitEditor();
     if (A.float) cancelFloat();
     if (Anim.playing) Anim.stop();
-    this.store(); this.thumb(P.index);
+    this.thumb(P.index); Mem.run(true);
+    this.store();
     this.load(i);
     toast(`${i + 1}페이지`);
   },
@@ -59,7 +60,7 @@ const Pages = {
         const n = newLayer({ type: L.type, name: L.name });
         for (const k of PROPS) if (k !== 'type') n[k] = L[k];
         n.fx = structuredClone(L.fx); n.data = snapData(L); n.data = L.type === 'vector' ? n.data : structuredClone(L.data);
-        if (n.canvas && L.canvas) n.ctx.drawImage(L.canvas, 0, 0);
+        copyPixels(n, L);
         if (L.mask) n.mask = cloneCanvas(L.mask);
         map.set(L.id, n.id); D.layers.push(n);
       }

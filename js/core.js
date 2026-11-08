@@ -160,10 +160,109 @@ function defaultData(type) {
     default: return {};
   }
 }
+/* ---------- 레이어 픽셀 보관 ----------
+ * 래스터 레이어는 편집하지 않는 동안 그림이 있는 범위만 잘라 보관한다(L._compact).
+ * L.canvas / L.ctx를 읽는 순간 문서 크기 캔버스로 펼치고(L._full), 한가해지면 Mem이 다시 잘라 둔다.
+ * 합성·썸네일·저장은 srcOf / drawSrc로 잘라 둔 상태 그대로 그려 레이어를 펼치지 않는다. */
+const EMPTY_COMPACT = Object.freeze({ c: null, x: 0, y: 0, w: 0, h: 0 });
+function attachStorage(L, full) {
+  L._hasCanvas = true; L._full = full; L._ctx = full ? full.getContext('2d') : null; L._compact = full ? null : EMPTY_COMPACT;
+  Object.defineProperty(L, 'canvas', {
+    configurable: true, enumerable: false,
+    get() { if (!this._full) materialize(this); this._used = ++Mem.tick; return this._full; },
+    set(v) { this._full = v; this._ctx = v ? v.getContext('2d') : null; this._compact = v ? null : EMPTY_COMPACT; },
+  });
+  Object.defineProperty(L, 'ctx', {
+    configurable: true, enumerable: false,
+    get() { if (!this._full) materialize(this); this._used = ++Mem.tick; return this._ctx; },
+    set(v) { if (v && v.canvas) { this._full = v.canvas; this._ctx = v; this._compact = null; } },
+  });
+}
+function materialize(L) {
+  const c = mkCanvas(D.w, D.h), cp = L._compact;
+  if (cp && cp.c) c.getContext('2d').drawImage(cp.c, cp.x, cp.y);
+  L._full = c; L._ctx = c.getContext('2d'); L._compact = null;
+  Mem.schedule();
+}
+// 그림이 있는 범위만 남기고 문서 크기 캔버스를 놓는다
+function compactLayer(L) {
+  const full = L._full; if (!full) return;
+  const w = full.width, h = full.height, d = full.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, w, h).data;
+  let x0 = w, y0 = h, x1 = -1, y1 = -1;
+  for (let y = 0; y < h; y++) {
+    const o = y * w * 4;
+    let first = -1, last = -1;
+    for (let x = 0; x < w; x++) if (d[o + x * 4 + 3]) { first = x; break; }
+    if (first < 0) continue;
+    for (let x = w - 1; x >= first; x--) if (d[o + x * 4 + 3]) { last = x; break; }
+    if (first < x0) x0 = first; if (last > x1) x1 = last; if (y < y0) y0 = y; y1 = y;
+  }
+  L._compact = x1 < 0 ? EMPTY_COMPACT : { c: cloneCanvas(full, { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 }), x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
+  L._full = null; L._ctx = null;
+}
+// 잘라 둔 그림을 바로 넣는다 (PSD·프로젝트 열기에서 문서 크기 캔버스를 만들지 않도록)
+function setCompact(L, c, x, y) {
+  L._full = null; L._ctx = null;
+  L._compact = c && c.width && c.height ? { c, x, y, w: c.width, h: c.height } : EMPTY_COMPACT;
+}
+// 합성용 원본: 펼쳐져 있으면 캔버스, 아니면 잘라 둔 조각
+function srcOf(L) { return L._full || L._compact || EMPTY_COMPACT; }
+// r 영역을 같은 자리에 그린다 (src: 문서 크기 캔버스 또는 잘라 둔 조각)
+function drawSrc(ctx, src, r) {
+  if (!src) return;
+  if (src.getContext || src instanceof ImageBitmap) { ctx.drawImage(src, r.x, r.y, r.w, r.h, r.x, r.y, r.w, r.h); return; }
+  if (!src.c) return;
+  const x0 = Math.max(r.x, src.x), y0 = Math.max(r.y, src.y), x1 = Math.min(r.x + r.w, src.x + src.w), y1 = Math.min(r.y + r.h, src.y + src.h);
+  if (x1 <= x0 || y1 <= y0) return;
+  ctx.drawImage(src.c, x0 - src.x, y0 - src.y, x1 - x0, y1 - y0, x0, y0, x1 - x0, y1 - y0);
+}
+// 문서 원점 기준으로 통째로 그린다 (변환 행렬이 걸린 상태에서도)
+function drawSrcFull(ctx, src) {
+  if (!src) return;
+  if (src.getContext || src instanceof ImageBitmap) ctx.drawImage(src, 0, 0);
+  else if (src.c) ctx.drawImage(src.c, src.x, src.y);
+}
+// 레이어 픽셀을 다른 레이어로 복사 (래스터는 잘라 둔 상태 그대로)
+function copyPixels(n, L) {
+  if (!n._hasCanvas || !L._hasCanvas) return;
+  if (n.type === 'raster' && L.type === 'raster' && !L._full) { const cp = L._compact; setCompact(n, cp.c ? cloneCanvas(cp.c) : null, cp.x, cp.y); return; }
+  n.ctx.clearRect(0, 0, D.w, D.h); drawSrcFull(n.ctx, srcOf(L));
+}
+// 큰 이미지를 문서 크기로 펼치지 않고 그림 부분만 잘라 넣는다 (공용 임시 캔버스 하나만 쓴다)
+function setCompactFromImage(L, img) {
+  if (!img) { setCompact(L, null, 0, 0); return; }
+  const t = T.get('loadtmp'); t.ctx.clearRect(0, 0, D.w, D.h); t.ctx.drawImage(img, 0, 0);
+  L._full = t.canvas; compactLayer(L);
+  if (L._full === t.canvas) { L._full = null; L._ctx = null; }
+}
+const Mem = {
+  tick: 0, timer: 0,
+  enabled: store.get('memSave', true),
+  setEnabled(v) { this.enabled = v; store.set('memSave', v); if (v) this.run(true); },
+  schedule(ms = 2000) { if (!this.enabled) return; clearTimeout(this.timer); this.timer = setTimeout(() => this.run(), ms); },
+  busyWith(L) { return L.id === A.layerId && (A.overlay || A.float || A.replace); },
+  // 편집 중인 레이어 하나만 남기고 펼쳐 둔 래스터 레이어를 다시 잘라 둔다
+  run(all) {
+    if (!this.enabled) return;
+    if (!all && (drag || Busy.filter)) { this.schedule(); return; }
+    for (const L of D.layers) {
+      if (L.type !== 'raster' || !L._full || this.busyWith(L)) continue;
+      if (!all && L.id === D.activeId) continue;
+      compactLayer(L);
+    }
+  },
+  // 잘라 둔 크기 합계 (바이트)
+  estimate(layers = D.layers) {
+    let n = 0;
+    for (const L of layers) { if (!L._hasCanvas) continue; if (L._full) n += L._full.width * L._full.height * 4; else if (L._compact && L._compact.c) n += L._compact.w * L._compact.h * 4; }
+    return n;
+  },
+};
 function newLayer(o = {}) {
   const type = o.type || 'raster';
   const hasCanvas = type !== 'folder' && type !== 'adjust';
-  const c = hasCanvas ? mkCanvas(D.w, D.h) : null;
+  // 래스터 레이어는 빈 조각으로 시작해 처음 그릴 때 펼친다
+  const c = hasCanvas && type !== 'raster' ? mkCanvas(D.w, D.h) : null;
   let name = o.name;
   if (!name) {
     name = type === 'folder' ? '폴더 ' + D.nameSeq : type === 'adjust' ? (ADJUST[(o.data && o.data.kind) || 'hsl'].label + ' ' + D.nameSeq)
@@ -171,11 +270,12 @@ function newLayer(o = {}) {
     D.nameSeq++;
   }
   const L = Object.assign({
-    id: layerSeq++, type, name, canvas: c, ctx: c && c.getContext('2d'), parent: 0,
+    id: layerSeq++, type, name, parent: 0,
     opacity: 1, blend: type === 'folder' ? 'pass' : 'source-over', visible: true, locked: false, alphaLock: false, clip: false, draft: false, ref: false,
     color: null, mask: null, maskOn: true, maskEdit: false, quickmask: false,
     fx: { color: null, border: null, tone: null }, data: defaultData(type), keys: null, rev: revSeq++, renderedRev: 0,
   }, o, { name });
+  if (hasCanvas) attachStorage(L, c); else { L.canvas = null; L.ctx = null; }
   if (o.data) L.data = Object.assign(defaultData(type), o.data);
   if (o.fx) L.fx = Object.assign({ color: null, border: null, tone: null }, o.fx);
   if (type === 'paper') paintPaper(L);
@@ -421,14 +521,14 @@ function layerSource(L, r, opts, slot) {
   const xf = typeof Anim !== 'undefined' ? Anim.layerXform(L, frameOf(opts)) : null;
   const fx = L.fx && (L.fx.color || L.fx.border || L.fx.tone) && !opts.noFx;
   const useMask = L.mask && L.maskOn;
-  if (!onCanvas && !xf && !fx && !useMask && !(preview && A.target === 'mask')) return L.canvas;
+  if (!onCanvas && !xf && !fx && !useMask && !(preview && A.target === 'mask')) return srcOf(L);
   const sl = T.get(slot), s = sl.ctx;
   const bw = fx && L.fx.border ? Math.ceil(L.fx.border.w) + 2 : 0;
   const rr = Rect.clip(Rect.grow(r, bw)) || r;
   s.save(); s.beginPath(); s.rect(rr.x, rr.y, rr.w, rr.h); s.clip(); s.clearRect(rr.x, rr.y, rr.w, rr.h);
-  const content = (onCanvas && A.replace) || L.canvas;
-  if (xf) { s.setTransform(xf); s.drawImage(content, 0, 0); s.setTransform(1, 0, 0, 1, 0, 0); }
-  else s.drawImage(content, rr.x, rr.y, rr.w, rr.h, rr.x, rr.y, rr.w, rr.h);
+  const content = (onCanvas && A.replace) || srcOf(L);
+  if (xf) { s.setTransform(xf); drawSrcFull(s, content); s.setTransform(1, 0, 0, 1, 0, 0); }
+  else drawSrc(s, content, rr);
   if (onCanvas && A.overlay) {
     const o = A.overlay, src = prepOverlay(o, rr);
     s.globalAlpha = o.alpha; s.globalCompositeOperation = o.mode;
@@ -481,7 +581,7 @@ function blit(tc, src, L, r, opts) {
   const op = typeof Anim !== 'undefined' ? Anim.keyValue(L, 'opacity', frameOf(opts), 1) : 1;
   tc.globalAlpha = clamp(L.opacity * op, 0, 1);
   tc.globalCompositeOperation = L.blend === 'pass' ? 'source-over' : L.blend;
-  tc.drawImage(src, r.x, r.y, r.w, r.h, r.x, r.y, r.w, r.h);
+  drawSrc(tc, src, r);
   tc.globalAlpha = 1; tc.globalCompositeOperation = 'source-over';
 }
 function applyAdjustLayer(tc, L, r, base, opts) {
@@ -492,7 +592,7 @@ function applyAdjustLayer(tc, L, r, base, opts) {
   adjustFn(L)(id.data);
   gx.putImageData(id, r.x, r.y);
   if (L.mask && L.maskOn) { gx.globalCompositeOperation = 'destination-in'; gx.drawImage(maskSource(L, r), r.x, r.y, r.w, r.h, r.x, r.y, r.w, r.h); }
-  if (L.clip && base) { gx.globalCompositeOperation = 'destination-in'; gx.drawImage(base, r.x, r.y, r.w, r.h, r.x, r.y, r.w, r.h); }
+  if (L.clip && base) { gx.globalCompositeOperation = 'destination-in'; drawSrc(gx, base, r); }
   gx.restore();
   const op = typeof Anim !== 'undefined' ? Anim.keyValue(L, 'opacity', frameOf(opts), 1) : 1;
   tc.globalAlpha = clamp(L.opacity * op, 0, 1);
@@ -512,7 +612,7 @@ function renderLevel(tc, pid, r, opts, depth) {
       if (inc && onion && onion.has(L.id)) {
         const o = onion.get(L.id), src = layerSource(L, r, opts, 'on' + depth), ox = T.get('onion').ctx;
         ox.save(); ox.beginPath(); ox.rect(r.x, r.y, r.w, r.h); ox.clip(); ox.clearRect(r.x, r.y, r.w, r.h);
-        ox.drawImage(src, r.x, r.y, r.w, r.h, r.x, r.y, r.w, r.h);
+        drawSrc(ox, src, r);
         ox.globalCompositeOperation = 'source-in'; ox.fillStyle = o.color; ox.fillRect(r.x, r.y, r.w, r.h); ox.restore();
         tc.globalAlpha = o.alpha; tc.drawImage(T.get('onion').canvas, r.x, r.y, r.w, r.h, r.x, r.y, r.w, r.h); tc.globalAlpha = 1;
       }
@@ -540,9 +640,9 @@ function renderLevel(tc, pid, r, opts, depth) {
     } else if (inc && base) {
       const s2 = src || layerSource(L, r, opts, 'cs' + depth), ct = T.get('clip' + depth), cx = ct.ctx;
       cx.save(); cx.beginPath(); cx.rect(r.x, r.y, r.w, r.h); cx.clip(); cx.clearRect(r.x, r.y, r.w, r.h);
-      cx.drawImage(s2, r.x, r.y, r.w, r.h, r.x, r.y, r.w, r.h);
+      drawSrc(cx, s2, r);
       cx.globalCompositeOperation = 'destination-in';
-      cx.drawImage(base, r.x, r.y, r.w, r.h, r.x, r.y, r.w, r.h);
+      drawSrc(cx, base, r);
       cx.restore();
       blit(tc, ct.canvas, L, r, opts);
     }
@@ -702,6 +802,7 @@ function afterHistory(silent) {
   if (typeof HistUI !== 'undefined') HistUI.render();
   if (typeof updateCmdStates === 'function') updateCmdStates();
   if (!silent) { dirtySinceSave = true; if (typeof Autosave !== 'undefined') Autosave.schedule(); }
+  Mem.schedule();
 }
 function pixCmd(label, L, r, before, after, which = 'canvas') {
   const put = c => {
@@ -766,25 +867,27 @@ function drawThumb(L) {
   x.clearRect(0, 0, t.width, t.height);
   const s = Math.min(t.width / D.w, t.height / D.h), w = D.w * s, h = D.h * s, ox = (t.width - w) / 2, oy = (t.height - h) / 2;
   if (L.type === 'folder') {
-    const r = Rect.full();
-    // 폴더 썸네일은 폴더 내용만
-    const tmp = T.get('thumbgrp2'); tmp.ctx.clearRect(0, 0, D.w, D.h); renderLevel(tmp.ctx, L.id, r, { raw: true }, 8);
-    x.drawImage(tmp.canvas, ox, oy, w, h);
+    // 폴더는 아이콘으로 (내용을 합성하면 문서 크기 캔버스가 더 필요하다)
+    x.fillStyle = '#3a3d44'; x.beginPath(); x.moveTo(22, 22); x.lineTo(44, 22); x.lineTo(50, 28); x.lineTo(82, 28); x.lineTo(82, 58); x.lineTo(22, 58); x.closePath(); x.fill();
+    x.strokeStyle = '#6e6a6c'; x.lineWidth = 2; x.stroke();
   } else if (L.type === 'adjust') {
     x.fillStyle = '#3a3d44'; x.fillRect(0, 0, t.width, t.height);
     const g = x.createLinearGradient(0, 0, t.width, 0); g.addColorStop(0, '#222'); g.addColorStop(1, '#eee');
     x.fillStyle = g; x.fillRect(14, 26, t.width - 28, 26);
-  } else if (L.canvas) {
+  } else if (L._hasCanvas) {
     x.imageSmoothingQuality = 'high';
-    x.drawImage(L.canvas, ox, oy, w, h);
+    const src = srcOf(L);
+    if (src.getContext) x.drawImage(src, ox, oy, w, h);
+    else if (src.c) x.drawImage(src.c, ox + src.x * s, oy + src.y * s, src.w * s, src.h * s);
   }
   if (L.mask) {
     if (!L.mthumb) { L.mthumb = mkCanvas(52, 39); L.mthumb.className = 'lthumb mthumb'; }
     const m = L.mthumb.getContext('2d');
     m.fillStyle = '#000'; m.fillRect(0, 0, 52, 39);
     const ms = Math.min(52 / D.w, 39 / D.h);
-    const mt = T.get('mthumb'); mt.ctx.clearRect(0, 0, D.w, D.h); mt.ctx.fillStyle = '#fff'; mt.ctx.fillRect(0, 0, D.w, D.h);
-    mt.ctx.globalCompositeOperation = 'destination-in'; mt.ctx.drawImage(L.mask, 0, 0); mt.ctx.globalCompositeOperation = 'source-over';
-    m.drawImage(mt.canvas, (52 - D.w * ms) / 2, (39 - D.h * ms) / 2, D.w * ms, D.h * ms);
+    const mt = drawThumb.mt || (drawThumb.mt = mkCanvas(52, 39)), mx = mt.getContext('2d');
+    mx.clearRect(0, 0, 52, 39); mx.drawImage(L.mask, (52 - D.w * ms) / 2, (39 - D.h * ms) / 2, D.w * ms, D.h * ms);
+    mx.globalCompositeOperation = 'source-in'; mx.fillStyle = '#fff'; mx.fillRect(0, 0, 52, 39); mx.globalCompositeOperation = 'source-over';
+    m.drawImage(mt, 0, 0);
   }
 }

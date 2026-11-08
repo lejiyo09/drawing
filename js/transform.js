@@ -362,6 +362,8 @@ function transformDocument(newW, newH, M, scaleLen, label) {
         x.imageSmoothingQuality = 'high'; x.setTransform(M); x.drawImage(c, 0, 0);
         L[k] = n; if (k === 'canvas') L.ctx = x;
       }
+      // 한 장씩 바로 다시 잘라 두어 모든 레이어가 한꺼번에 펼쳐지지 않게 한다
+      if (L.type === 'raster' && Mem.enabled) compactLayer(L);
       if (L.type === 'vector') L.data.strokes = L.data.strokes.map(s => ({ ...s, pts: s.pts.map(p => { const q = mapPt(p[0], p[1]); return [q.x, q.y, p[2]]; }), size: s.size * scaleLen }));
       if (L.type === 'text') L.data.objs = L.data.objs.map(o => Text.transformObj(o, mapPt, scaleLen));
       if (L.type === 'gradient') { L.data.a = mapPt(L.data.a.x, L.data.a.y); L.data.b = mapPt(L.data.b.x, L.data.b.y); }
